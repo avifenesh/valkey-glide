@@ -77,7 +77,10 @@ use crate::{
     Cmd, ConnectionInfo, ErrorKind, IntoConnectionInfo, RedisError, RedisFuture, RedisResult,
     Value,
 };
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::{
+    executor::block_on,
+    stream::{FuturesUnordered, StreamExt},
+};
 use std::time::Duration;
 
 #[cfg(feature = "tokio-comp")]
@@ -362,6 +365,39 @@ where
                 Response::ClusterScanResult(_, _) => unreachable!(),
             })
     }
+    /// Replace credentials of inner connection
+    pub async fn replace_credentials(
+        &mut self,
+        password: String,
+        username: Option<String>,
+    ) -> RedisResult<Value> {
+        self.route_operation_request(Operation::ReplaceCredentials { password, username })
+            .await
+    }
+
+    /// Routes an operation request to the appropriate handler.
+    async fn route_operation_request(
+        &mut self,
+        operation_request: Operation,
+    ) -> RedisResult<Value> {
+        let (sender, receiver) = oneshot::channel();
+        self.0
+            .send(Message {
+                cmd: CmdArg::OperationRequest { operation_request },
+                sender,
+            })
+            .await
+            .map_err(|_| RedisError::from(io::Error::from(io::ErrorKind::BrokenPipe)))?;
+
+        receiver
+            .await
+            .unwrap_or_else(|_| Err(RedisError::from(io::Error::from(io::ErrorKind::BrokenPipe))))
+            .map(|response| match response {
+                Response::Single(values) => values,
+                Response::Multiple(_) => unreachable!(),
+                Response::ClusterScanResult(_, _) => unreachable!(),
+            })
+    }
 }
 
 #[cfg(feature = "tokio-comp")]
@@ -404,7 +440,7 @@ type ConnectionsContainer<C> =
 
 pub(crate) struct InnerCore<C> {
     pub(crate) conn_lock: RwLock<ConnectionsContainer<C>>,
-    cluster_params: ClusterParams,
+    cluster_params: RwLock<ClusterParams>,
     pending_requests: Mutex<Vec<PendingRequest<C>>>,
     slot_refresh_state: SlotRefreshState,
     initial_nodes: Vec<ConnectionInfo>,
@@ -596,6 +632,17 @@ enum CmdArg<C> {
         // struct containing the arguments for the cluster scan command - scan state cursor, match pattern, count and object type.
         cluster_scan_args: ClusterScanArgs,
     },
+    OperationRequest {
+        operation_request: Operation,
+    },
+}
+
+#[derive(Clone)]
+enum Operation {
+    ReplaceCredentials {
+        password: String,
+        username: Option<String>,
+    },
 }
 
 fn route_for_pipeline(pipeline: &crate::Pipeline) -> RedisResult<Option<Route>> {
@@ -637,8 +684,7 @@ fn route_for_pipeline(pipeline: &crate::Pipeline) -> RedisResult<Option<Route>> 
 }
 
 fn boxed_sleep(duration: Duration) -> BoxFuture<'static, ()> {
-    #[cfg(feature = "tokio-comp")]
-    return Box::pin(tokio::time::sleep(duration));
+    Box::pin(tokio::time::sleep(duration))
 }
 
 pub(crate) enum Response {
@@ -647,6 +693,7 @@ pub(crate) enum Response {
     Multiple(Vec<Value>),
 }
 
+#[derive(Debug)]
 pub(crate) enum OperationTarget {
     Node { address: String },
     FanOut,
@@ -721,6 +768,8 @@ impl<C> RequestInfo<C> {
                 CmdArg::ClusterScan { .. } => {
                     unreachable!()
                 }
+                // Operation requests are not routed.
+                CmdArg::OperationRequest { .. } => {}
             }
         }
     }
@@ -755,6 +804,8 @@ impl<C> RequestInfo<C> {
             CmdArg::ClusterScan { .. } => {
                 unreachable!()
             }
+            // Operation requests are not routed.
+            CmdArg::OperationRequest { .. } => {}
         }
     }
 }
@@ -811,6 +862,10 @@ enum Next<C> {
     ReconnectToInitialNodes {
         // if not set, then a reconnect should happen without sending a request afterwards
         request: Option<PendingRequest<C>>,
+    },
+    ReAuth {
+        request: PendingRequest<C>,
+        address: String,
     },
     Done,
 }
@@ -968,6 +1023,11 @@ impl<C> Future for Request<C> {
                         self.respond(Err(err));
                         Next::Done.into()
                     }
+                    crate::types::RetryMethod::ReAuthenticate => Next::ReAuth {
+                        request: this.request.take().unwrap(),
+                        address,
+                    }
+                    .into(),
                 }
             }
         }
@@ -1032,7 +1092,7 @@ where
                 cluster_params.read_from_replicas,
                 0,
             )),
-            cluster_params: cluster_params.clone(),
+            cluster_params: cluster_params.clone().into(),
             pending_requests: Mutex::new(Vec::new()),
             slot_refresh_state: SlotRefreshState::new(slots_refresh_rate_limiter),
             initial_nodes: initial_nodes.to_vec(),
@@ -1190,10 +1250,11 @@ where
     // Being used when all cluster connections are unavailable.
     fn reconnect_to_initial_nodes(inner: Arc<InnerCore<C>>) -> impl Future<Output = ()> {
         let inner = inner.clone();
+        let cluster_params = block_on(inner.cluster_params.read()).clone();
         async move {
             let connection_map = match Self::create_initial_connections(
                 &inner.initial_nodes,
-                &inner.cluster_params,
+                &cluster_params,
                 inner.glide_connection_options.clone(),
             )
             .await
@@ -1306,14 +1367,14 @@ where
                     };
 
                     // override subscriptions for this connection
-                    let mut cluster_params = cluster_params.clone();
                     let subs_guard = subscriptions_by_address.read().await;
-                    cluster_params.pubsub_subscriptions = subs_guard.get(&address).cloned();
+                    let mut cluster_params_cloned = cluster_params.read().await.clone();
+                    cluster_params_cloned.pubsub_subscriptions = subs_guard.get(&address).cloned();
                     drop(subs_guard);
                     let node = get_or_create_conn(
                         &address,
                         node_option,
-                        &cluster_params,
+                        &cluster_params_cloned,
                         conn_type,
                         glide_connection_options.clone(),
                     )
@@ -1554,7 +1615,7 @@ where
     }
 
     async fn refresh_pubsub_subscriptions(inner: Arc<InnerCore<C>>) {
-        if inner.cluster_params.protocol != crate::types::ProtocolVersion::RESP3 {
+        if inner.cluster_params.read().await.protocol != crate::types::ProtocolVersion::RESP3 {
             return;
         }
 
@@ -1763,7 +1824,7 @@ where
             .fold(
                 ConnectionsMap(DashMap::with_capacity(nodes_len)),
                 |connections, (addr, node)| async {
-                    let mut cluster_params = inner.cluster_params.clone();
+                    let mut cluster_params = inner.cluster_params.read().await.clone();
                     let subs_guard = inner.subscriptions_by_address.read().await;
                     cluster_params.pubsub_subscriptions = subs_guard.get(addr).cloned();
                     drop(subs_guard);
@@ -1787,10 +1848,11 @@ where
         info!("refresh_slots found nodes:\n{new_connections}");
         // Replace the current slot map and connection vector with the new ones
         let mut write_guard = inner.conn_lock.write().await;
+        let read_from_replicas = inner.cluster_params.read().await.read_from_replicas;
         *write_guard = ConnectionsContainer::new(
             new_slots,
             new_connections,
-            inner.cluster_params.read_from_replicas,
+            read_from_replicas,
             topology_hash,
         );
         Ok(())
@@ -1977,6 +2039,13 @@ where
                     Err(err) => Err((OperationTarget::FanOut, err)),
                 }
             }
+            CmdArg::OperationRequest { operation_request } => match operation_request {
+                Operation::ReplaceCredentials { password, username } => {
+                    core.cluster_params.write().await.username = username;
+                    core.cluster_params.write().await.password = Some(password);
+                    Ok(Response::Single(Value::Okay))
+                }
+            },
         }
     }
 
@@ -2057,7 +2126,7 @@ where
         let (address, mut conn) = match conn_check {
             ConnectionCheck::Found((address, connection)) => (address, connection.await),
             ConnectionCheck::OnlyAddress(addr) => {
-                let mut this_conn_params = core.cluster_params.clone();
+                let mut this_conn_params = core.cluster_params.read().await.clone();
                 let subs_guard = core.subscriptions_by_address.read().await;
                 this_conn_params.pubsub_subscriptions = subs_guard.get(addr.as_str()).cloned();
                 drop(subs_guard);
@@ -2155,6 +2224,7 @@ where
         info: RequestInfo<C>,
         address: String,
         retry: u32,
+        retry_params: RetryParams,
     ) -> OperationResult {
         let is_primary = core.conn_lock.read().await.is_primary(&address);
 
@@ -2164,7 +2234,7 @@ where
             core.conn_lock.read().await.remove_node(&address);
         } else {
             // If the connection is primary, just sleep and retry
-            let sleep_duration = core.cluster_params.retry_params.wait_time_for_retry(retry);
+            let sleep_duration = retry_params.wait_time_for_retry(retry);
             boxed_sleep(sleep_duration).await;
         }
 
@@ -2173,7 +2243,9 @@ where
 
     fn poll_complete(&mut self, cx: &mut task::Context<'_>) -> Poll<PollFlushAction> {
         let mut poll_flush_action = PollFlushAction::None;
-
+        let retry_params = block_on(self.inner.cluster_params.read())
+            .retry_params
+            .clone();
         let mut pending_requests_guard = self.inner.pending_requests.lock().unwrap();
         if !pending_requests_guard.is_empty() {
             let mut pending_requests = mem::take(&mut *pending_requests_guard);
@@ -2187,7 +2259,7 @@ where
 
                 let future = Self::try_request(request.info.clone(), self.inner.clone()).boxed();
                 self.in_flight_requests.push(Box::pin(Request {
-                    retry_params: self.inner.cluster_params.retry_params.clone(),
+                    retry_params: retry_params.clone(),
                     request: Some(request),
                     future: RequestState::Future { future },
                 }));
@@ -2197,6 +2269,7 @@ where
         drop(pending_requests_guard);
 
         loop {
+            let retry_params = retry_params.clone();
             let result = match Pin::new(&mut self.in_flight_requests).poll_next(cx) {
                 Poll::Ready(Some(result)) => result,
                 Poll::Ready(None) | Poll::Pending => break,
@@ -2206,7 +2279,7 @@ where
                 Next::Retry { request } => {
                     let future = Self::try_request(request.info.clone(), self.inner.clone());
                     self.in_flight_requests.push(Box::pin(Request {
-                        retry_params: self.inner.cluster_params.retry_params.clone(),
+                        retry_params: retry_params.clone(),
                         request: Some(request),
                         future: RequestState::Future {
                             future: Box::pin(future),
@@ -2220,9 +2293,10 @@ where
                         request.info.clone(),
                         address,
                         request.retry,
+                        retry_params.clone(),
                     );
                     self.in_flight_requests.push(Box::pin(Request {
-                        retry_params: self.inner.cluster_params.retry_params.clone(),
+                        retry_params: retry_params.clone(),
                         request: Some(request),
                         future: RequestState::Future {
                             future: Box::pin(future),
@@ -2250,7 +2324,7 @@ where
                             },
                         };
                         self.in_flight_requests.push(Box::pin(Request {
-                            retry_params: self.inner.cluster_params.retry_params.clone(),
+                            retry_params,
                             request: Some(request),
                             future,
                         }));
@@ -2270,6 +2344,20 @@ where
                         self.inner.pending_requests.lock().unwrap().push(request);
                     }
                 }
+                Next::ReAuth { request, address } => {
+                    let future = Self::send_re_auth_request(
+                        self.inner.clone(),
+                        request.info.clone(),
+                        address,
+                    );
+                    self.in_flight_requests.push(Box::pin(Request {
+                        retry_params: retry_params.clone(),
+                        request: Some(request),
+                        future: RequestState::Future {
+                            future: Box::pin(future),
+                        },
+                    }));
+                }
             }
         }
 
@@ -2284,6 +2372,50 @@ where
         }
     }
 
+    async fn send_re_auth_request(
+        core: Core<C>,
+        info: RequestInfo<C>,
+        address: String,
+    ) -> OperationResult {
+        let password = block_on(core.cluster_params.read()).password.clone();
+        let username = block_on(core.cluster_params.read()).username.clone();
+        if password.is_none() {
+            return Err((
+                OperationTarget::Node { address },
+                RedisError::from((
+                    ErrorKind::AuthenticationFailed,
+                    "No password provided for AUTH",
+                )),
+            ));
+        }
+        let mut auth_cmd = crate::cmd("AUTH");
+        if let Some(username) = username {
+            auth_cmd.arg(username);
+        }
+        auth_cmd.arg(password.unwrap());
+        let cmd = Arc::new(auth_cmd.to_owned());
+        let routing =
+            InternalRoutingInfo::SingleNode(InternalSingleNodeRouting::ByAddress(address.clone()));
+        let auth_info = RequestInfo {
+            cmd: CmdArg::Cmd { cmd, routing },
+        };
+        let response = Self::try_request(auth_info, core.clone()).await;
+        match response {
+            Ok(response) => {
+                if let Response::Single(Value::Okay) = response {
+                    return Self::try_request(info, core.clone()).await;
+                } else {
+                    return Err((
+                        OperationTarget::Node { address },
+                        RedisError::from((ErrorKind::AuthenticationFailed, "AUTH failed")),
+                    ));
+                };
+            }
+            Err(err) => {
+                return Err((OperationTarget::Node { address }, RedisError::from(err.1)));
+            }
+        }
+    }
     fn send_refresh_error(&mut self) {
         if self.refresh_error.is_some() {
             if let Some(mut request) = Pin::new(&mut self.in_flight_requests)
@@ -2473,13 +2605,17 @@ where
             .ok()
             .and_then(|value| get_host_and_port_from_addr(addr).map(|(host, _)| (host, value)))
     });
+    let read_guard = inner.cluster_params.read().await;
+    let tls = read_guard.tls;
+    let read_from_replicas = read_guard.read_from_replicas;
+    drop(read_guard);
     (
         calculate_topology(
             topology_values,
             curr_retry,
-            inner.cluster_params.tls,
+            tls,
             num_of_nodes_to_query,
-            inner.cluster_params.read_from_replicas,
+            read_from_replicas,
         ),
         failed_addresses,
     )

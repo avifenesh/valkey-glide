@@ -414,6 +414,8 @@ pub struct MultiplexedConnection {
     response_timeout: Duration,
     protocol: ProtocolVersion,
     push_manager: PushManager,
+    password: Option<String>,
+    username: Option<String>,
 }
 
 impl Debug for MultiplexedConnection {
@@ -484,6 +486,8 @@ impl MultiplexedConnection {
             response_timeout,
             push_manager: pm,
             protocol: redis_connection_info.protocol,
+            password: redis_connection_info.password.clone(),
+            username: redis_connection_info.username.clone(),
         };
         let driver = {
             let auth = setup_connection(&connection_info.redis, &mut con);
@@ -575,6 +579,17 @@ impl MultiplexedConnection {
     pub async fn set_push_manager(&mut self, push_manager: PushManager) {
         self.push_manager = push_manager.clone();
         self.pipeline.set_push_manager(push_manager).await;
+    }
+
+    /// Replace credentials of connection
+    pub async fn replace_credentials(
+        &mut self,
+        password: String,
+        username: Option<String>,
+    ) -> RedisResult<Value> {
+        self.username = username;
+        self.password = Some(password);
+        Ok(Value::Okay)
     }
 }
 

@@ -9,7 +9,9 @@ use futures::FutureExt;
 use logger_core::{log_info, log_warn};
 use redis::aio::ConnectionLike;
 use redis::cluster_async::ClusterConnection;
-use redis::cluster_routing::{Routable, RoutingInfo, SingleNodeRoutingInfo};
+use redis::cluster_routing::{
+    MultipleNodeRoutingInfo, ResponsePolicy, Routable, RoutingInfo, SingleNodeRoutingInfo,
+};
 use redis::{Cmd, ErrorKind, ObjectType, PushInfo, RedisError, RedisResult, ScanStateRC, Value};
 pub use standalone_client::StandaloneClient;
 use std::io;
@@ -472,6 +474,37 @@ impl Client {
     pub fn release_inflight_request(&self) -> isize {
         self.inflight_requests_allowed
             .fetch_add(1, Ordering::SeqCst)
+    }
+
+    /// Replaces the current credentials with the provided ones.
+    /// If `re_auth` is true, the new credentials will be used to re-authenticate with the server.
+    pub async fn replace_credentials(
+        &mut self,
+        password: String,
+        re_auth: bool,
+        username: Option<String>,
+    ) -> RedisResult<Value> {
+        let routing = match re_auth {
+            true => RoutingInfo::MultiNode((
+                MultipleNodeRoutingInfo::AllNodes,
+                Some(ResponsePolicy::AllSucceeded),
+            )),
+            false => RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random),
+        };
+        let mut cmd = redis::cmd("AUTH");
+        if let Some(ref username) = username {
+            cmd.arg(username);
+        }
+        cmd.arg(&password);
+        self.send_command(&cmd, Some(routing)).await?;
+        match self.internal_client {
+            ClientWrapper::Standalone(ref mut client) => {
+                client.replace_credentials(password, username).await
+            }
+            ClientWrapper::Cluster { ref mut client } => {
+                client.replace_credentials(password, username).await
+            }
+        }
     }
 }
 

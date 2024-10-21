@@ -481,7 +481,7 @@ impl Cmd {
     ///
     /// This is useful for commands such as `SSCAN`, `SCAN` and others in async contexts.
     ///
-    /// One speciality of this function is that it will check if the response
+    /// One specialty of this function is that it will check if the response
     /// looks like a cursor or not and always just looks at the payload.
     /// This way you can use the function the same for responses in the
     /// format of `KEYS` (just a list) as well as `SSCAN` (which returns a

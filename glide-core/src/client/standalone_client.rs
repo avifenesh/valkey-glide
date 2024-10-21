@@ -458,6 +458,19 @@ impl StandaloneClient {
             }
         });
     }
+
+    /// Replace credentials of the multiplexed connection.
+    pub async fn replace_credentials(
+        &mut self,
+        password: String,
+        username: Option<String>,
+    ) -> RedisResult<Value> {
+        self.get_connection(false)
+            .get_connection()
+            .await?
+            .replace_credentials(password.clone(), username.clone())
+            .await
+    }
 }
 
 async fn get_connection_and_replication_info(

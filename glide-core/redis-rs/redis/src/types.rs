@@ -156,6 +156,9 @@ pub enum ErrorKind {
 
     /// Not all slots are covered by the cluster
     NotAllSlotsCovered,
+
+    /// The server requires authentication
+    NoAuth,
 }
 
 #[derive(PartialEq, Debug)]
@@ -172,6 +175,7 @@ pub(crate) enum ServerErrorKind {
     MasterDown,
     ReadOnly,
     NotBusy,
+    NoAuth,
 }
 
 #[derive(PartialEq, Debug)]
@@ -212,6 +216,7 @@ impl From<ServerError> for RedisError {
                     ServerErrorKind::MasterDown => ErrorKind::MasterDown,
                     ServerErrorKind::ReadOnly => ErrorKind::ReadOnly,
                     ServerErrorKind::NotBusy => ErrorKind::NotBusy,
+                    ServerErrorKind::NoAuth => ErrorKind::NoAuth,
                 };
                 match detail {
                     Some(detail) => RedisError::from((kind, desc, detail)),
@@ -823,6 +828,7 @@ pub(crate) enum RetryMethod {
     AskRedirect,
     MovedRedirect,
     WaitAndRetryOnPrimaryRedirectOnReplica,
+    ReAuthenticate,
 }
 
 /// Indicates a general failure in the library.
@@ -861,6 +867,7 @@ impl RedisError {
             ErrorKind::MasterDown => Some("MASTERDOWN"),
             ErrorKind::ReadOnly => Some("READONLY"),
             ErrorKind::NotBusy => Some("NOTBUSY"),
+            ErrorKind::NoAuth => Some("NOAUTH"),
             _ => match self.repr {
                 ErrorRepr::ExtensionError(ref code, _) => Some(code),
                 _ => None,
@@ -903,6 +910,7 @@ impl RedisError {
             ErrorKind::RESP3NotSupported => "resp3 is not supported by server",
             ErrorKind::ParseError => "parse error",
             ErrorKind::NotAllSlotsCovered => "not all slots are covered",
+            ErrorKind::NoAuth => "authentication required",
         }
     }
 
@@ -983,13 +991,13 @@ impl RedisError {
         match self.retry_method() {
             RetryMethod::Reconnect => true,
             RetryMethod::ReconnectAndRetry => true,
-
             RetryMethod::NoRetry => false,
             RetryMethod::RetryImmediately => false,
             RetryMethod::WaitAndRetry => false,
             RetryMethod::AskRedirect => false,
             RetryMethod::MovedRedirect => false,
             RetryMethod::WaitAndRetryOnPrimaryRedirectOnReplica => false,
+            RetryMethod::ReAuthenticate => false,
         }
     }
 
@@ -1099,6 +1107,7 @@ impl RedisError {
             ErrorKind::NotAllSlotsCovered => RetryMethod::NoRetry,
             ErrorKind::FatalReceiveError => RetryMethod::Reconnect,
             ErrorKind::FatalSendError => RetryMethod::ReconnectAndRetry,
+            ErrorKind::NoAuth => RetryMethod::ReAuthenticate,
         }
     }
 }
