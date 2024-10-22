@@ -79,12 +79,12 @@ jobs:
               if: ${{ contains(matrix.build.RUNNER, 'self-hosted') && matrix.build.TARGET != 'aarch64-unknown-linux-musl' }}
               run: sudo chown -R $USER:$USER /home/ubuntu/actions-runner/_work/valkey-glide
 
-            # For MUSL on X64 we need to install git since we use the checkout action
-            - name: Install git for musl
+            # For MUSL on X86 we need to install git since we use the checkout action
+            - name: Install git and node for musl
               if: ${{ contains(matrix.build.TARGET, 'x86_64-unknown-linux-musl')}}
               run: |
                   apk update
-                  apk add git
+                  apk add git nodejs 
               
             - name: Checkout
               if: ${{ matrix.build.TARGET != 'aarch64-unknown-linux-musl' }}
@@ -339,7 +339,7 @@ jobs:
               if: ${{ matrix.build.TARGET != 'aarch64-unknown-linux-musl' }}
               uses: actions/setup-node@v3
               with:
-                  node-version: "16"
+                  node-version: "20"
                   registry-url: "https://registry.npmjs.org"
                   architecture: ${{ matrix.build.ARCH }}
                   scope: "${{ vars.NPM_SCOPE }}"
