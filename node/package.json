@@ -42,7 +42,7 @@
     },
     "devDependencies": {
         "@jest/globals": "^29.7.0",
-        "@types/jest": "^29.5.12",
+        "@types/jest": "^29.5.14",
         "@types/minimist": "^1.2.5",
         "@types/redis-server": "^1.2.2",
         "@types/semver": "^7.5.8",
