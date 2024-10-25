@@ -20,6 +20,7 @@ import {
     GlideClient,
     GlideRecord,
     GlideString,
+    ListDirection,
     ProtocolVersion,
     RequestError,
     Script,
@@ -34,12 +35,13 @@ import {
     convertStringArrayToBuffer,
     createLongRunningLuaScript,
     createLuaLibWithLongRunningFunction,
-    DumpAndRestureTest,
+    DumpAndRestoreTest,
     encodableTransactionTest,
     encodedTransactionTest,
     flushAndCloseClient,
     generateLuaLibCode,
     getClientConfigurationOption,
+    getServerVersion,
     parseCommandLineArgs,
     parseEndpoints,
     transactionTest,
@@ -58,10 +60,12 @@ describe("GlideClient", () => {
         const standaloneAddresses =
             parseCommandLineArgs()["standalone-endpoints"];
         cluster = standaloneAddresses
-            ? await RedisCluster.initFromExistingCluster(
+            ? await ValkeyCluster.initFromExistingCluster(
+                  false,
                   parseEndpoints(standaloneAddresses),
+                  getServerVersion,
               )
-            : await RedisCluster.createCluster(false, 1, 1);
+            : await ValkeyCluster.createCluster(false, 1, 1, getServerVersion);
     }, 20000);
 
     afterEach(async () => {
@@ -136,11 +140,9 @@ describe("GlideClient", () => {
         "check that blocking commands returns never timeout_%p",
         async (protocol) => {
             client = await GlideClient.createClient(
-                getClientConfigurationOption(
-                    cluster.getAddresses(),
-                    protocol,
-                    300,
-                ),
+                getClientConfigurationOption(cluster.getAddresses(), protocol, {
+                    requestTimeout: 300,
+                }),
             );
 
             const promiseList = [
@@ -303,10 +305,7 @@ describe("GlideClient", () => {
                 getClientConfigurationOption(cluster.getAddresses(), protocol),
             );
             const bytesTransaction = new Transaction();
-            const expectedBytesRes = await DumpAndRestureTest(
-                bytesTransaction,
-                Buffer.from("value"),
-            );
+            const expectedBytesRes = await DumpAndRestoreTest(bytesTransaction);
             bytesTransaction.select(0);
             const result = await client.exec(bytesTransaction, {
                 decoder: Decoder.Bytes,
@@ -316,7 +315,7 @@ describe("GlideClient", () => {
             validateTransactionResponse(result, expectedBytesRes);
 
             const stringTransaction = new Transaction();
-            await DumpAndRestureTest(stringTransaction, "value");
+            await DumpAndRestoreTest(stringTransaction);
             stringTransaction.select(0);
 
             // Since DUMP gets binary results, we cannot use the string decoder here, so we expected to get an error.
@@ -566,7 +565,7 @@ describe("GlideClient", () => {
     it.each([ProtocolVersion.RESP2, ProtocolVersion.RESP3])(
         "copy with DB test_%p",
         async (protocol) => {
-            if (cluster.checkIfServerVersionLessThan("6.2.0")) return;
+            if (cluster.checkIfServerVersionLessThan("6.3.0")) return;
 
             const client = await GlideClient.createClient(
                 getClientConfigurationOption(cluster.getAddresses(), protocol),

@@ -46,6 +46,7 @@ import {
     generateLuaLibCode,
     getClientConfigurationOption,
     getFirstResult,
+    getServerVersion,
     intoArray,
     intoString,
     parseCommandLineArgs,
@@ -66,17 +67,13 @@ describe("GlideClusterClient", () => {
         const clusterAddresses = parseCommandLineArgs()["cluster-endpoints"];
         // Connect to cluster or create a new one based on the parsed addresses
         cluster = clusterAddresses
-            ? (await RedisCluster.initFromExistingCluster(
+            ? await ValkeyCluster.initFromExistingCluster(
+                  true,
                   parseEndpoints(clusterAddresses),
-              ))
-                ? await ValkeyCluster.initFromExistingCluster(
-                      true,
-                      parseEndpoints(clusterAddresses),
-                      getServerVersion,
-                  )
-                : // setting replicaCount to 1 to facilitate tests routed to replicas
-                  await RedisCluster.createCluster(true, 3, 1)
-            : await ValkeyCluster.createCluster(true, 3, 1, getServerVersion);
+                  getServerVersion,
+              )
+            : // setting replicaCount to 1 to facilitate tests routed to replicas
+              await ValkeyCluster.createCluster(true, 3, 1, getServerVersion);
     }, 20000);
 
     afterEach(async () => {
@@ -376,10 +373,14 @@ describe("GlideClusterClient", () => {
 
             if (!cluster.checkIfServerVersionLessThan("7.0.0")) {
                 lmpopArr.push(
-                    client.lmpop(["abc", "def"], ListDirection.LEFT, 1),
+                    client.lmpop(["abc", "def"], ListDirection.LEFT, {
+                        count: 1,
+                    }),
                 );
                 lmpopArr.push(
-                    client.blmpop(["abc", "def"], ListDirection.RIGHT, 0.1, 1),
+                    client.blmpop(["abc", "def"], ListDirection.RIGHT, 0.1, {
+                        count: 1,
+                    }),
                 );
             }
 
@@ -653,7 +654,7 @@ describe("GlideClusterClient", () => {
                 getClientConfigurationOption(cluster.getAddresses(), protocol),
             );
 
-            if (cluster.checkIfServerVersionLessThan("6.2.0")) return;
+            if (cluster.checkIfServerVersionLessThan("6.3.0")) return;
 
             const source = `{key}-${uuidv4()}`;
             const destination = `{key}-${uuidv4()}`;

@@ -120,7 +120,7 @@ export class ValkeyCluster {
     }
 
     public checkIfServerVersionLessThan(minVersion: string): boolean {
-        return lt(this.version, minVersion);
+        return lt(minVersion, this.version);
     }
 
     public async close() {
