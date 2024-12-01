@@ -142,9 +142,7 @@ mod test_cluster_scan_async {
         }
 
         keys.sort();
-        keys.dedup();
         expected_keys.sort();
-        expected_keys.dedup();
         assert_eq!(keys, expected_keys);
     }
 
@@ -173,7 +171,7 @@ mod test_cluster_scan_async {
         let mut delslots_cmd = cmd("CLUSTER");
         // delete a few slots
         delslots_cmd.arg("DELSLOTSRANGE").arg("0").arg("100");
-        let delslots_res: RedisResult<Value> = connection
+        let _: RedisResult<Value> = connection
             .route_command(
                 &delslots_cmd,
                 RoutingInfo::MultiNode((
@@ -183,7 +181,31 @@ mod test_cluster_scan_async {
             )
             .await;
 
-        assert!(delslots_res.is_ok());
+        let mut slots_cmd = cmd("CLUSTER");
+        slots_cmd.arg("SLOTS");
+        let slots_info: Value = connection
+            .route_command(
+                &slots_cmd,
+                RoutingInfo::MultiNode((
+                    MultipleNodeRoutingInfo::AllNodes,
+                    Some(ResponsePolicy::OneSucceeded),
+                )),
+            )
+            .await
+            .unwrap();
+
+        if let Value::Array(slots) = slots_info {
+            println!("slots: {:?}", slots);
+            for slot_info in slots {
+                if let Value::Array(slot_details) = slot_info {
+                    if let (Value::Int(start), Value::Int(end)) =
+                        (slot_details[0].clone(), slot_details[1].clone())
+                    {
+                        assert!(end < 0 || start > 100);
+                    }
+                }
+            }
+        }
 
         let mut scan_state_rc = ScanStateRC::new();
         let mut keys: Vec<String> = Vec::new();
@@ -207,11 +229,10 @@ mod test_cluster_scan_async {
         }
 
         keys.sort();
-        keys.dedup();
         expected_keys.sort();
-        expected_keys.dedup();
         assert_eq!(keys, expected_keys);
     }
+
     #[tokio::test]
     #[serial_test::serial]
     async fn test_async_cluster_scan_with_all_delslots() {
@@ -237,7 +258,7 @@ mod test_cluster_scan_async {
         let mut delslots_cmd = cmd("CLUSTER");
         // delete all slots
         delslots_cmd.arg("DELSLOTSRANGE").arg("0").arg("16383");
-        let delslots_res: RedisResult<Value> = connection
+        let _: RedisResult<Value> = connection
             .route_command(
                 &delslots_cmd,
                 RoutingInfo::MultiNode((
@@ -247,7 +268,22 @@ mod test_cluster_scan_async {
             )
             .await;
 
-        assert!(delslots_res.is_ok());
+        let mut slots_cmd = cmd("CLUSTER");
+        slots_cmd.arg("SLOTS");
+        let slots_info: Value = connection
+            .route_command(
+                &slots_cmd,
+                RoutingInfo::MultiNode((
+                    MultipleNodeRoutingInfo::AllNodes,
+                    Some(ResponsePolicy::OneSucceeded),
+                )),
+            )
+            .await
+            .unwrap();
+
+        if let Value::Array(slots) = slots_info {
+            assert_eq!(slots.len(), 0);
+        }
 
         let mut scan_state_rc = ScanStateRC::new();
         let mut keys: Vec<String> = Vec::new();
@@ -271,10 +307,7 @@ mod test_cluster_scan_async {
         }
 
         keys.sort();
-        keys.dedup();
-        println!("keys: {:?}", keys);
         expected_keys.sort();
-        expected_keys.dedup();
         assert_eq!(keys, expected_keys);
     }
 
@@ -443,7 +476,7 @@ mod test_cluster_scan_async {
             .allow_non_covered_slots(true)
             .build();
         loop {
-            let res = connection
+            let res: Result<(ScanStateRC, Vec<Value>), redis::RedisError> = connection
                 .cluster_scan(scan_state_rc.clone(), args.clone())
                 .await;
             let (next_cursor, scan_keys): (ScanStateRC, Vec<Value>) = match res {
