@@ -582,7 +582,17 @@ where
                 // Mark the current slot as scanned
                 mark_slot_as_scanned(scanned_slots_map, slot);
                 // Move to the next slot
-                slot = slot.saturating_add(1);
+                loop {
+                    slot = slot.saturating_add(1);
+                    if slot == END_OF_SCAN {
+                        return Ok(NextNodeResult::AllSlotsCompleted);
+                    }
+                    let slot_index = (slot as u64 / BITS_PER_U64 as u64) as usize;
+                    let slot_bit = slot as u64 % (BITS_PER_U64 as u64);
+                    if scanned_slots_map[slot_index] & (1 << slot_bit) == 0 {
+                        break;
+                    }
+                }
             }
             None => {
                 // Error if slots are not covered and scanning is not allowed
