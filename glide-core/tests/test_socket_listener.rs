@@ -4,8 +4,12 @@
 use glide_core::*;
 use rsevents::{Awaitable, EventState, ManualResetEvent};
 use std::io::prelude::*;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
-use std::{os::unix::net::UnixStream, thread};
+use std::thread;
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 mod utilities;
 use integer_encoding::VarInt;
 use utilities::cluster::*;
@@ -30,6 +34,11 @@ mod socket_listener {
     use redis::{Cmd, ConnectionAddr, FromRedisValue, Value};
     use rstest::rstest;
     use std::mem::size_of;
+    #[cfg(windows)]
+    use tokio::net::windows::named_pipe::{
+        ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+    };
+    #[cfg(unix)]
     use tokio::{net::UnixListener, runtime::Builder};
 
     /// An enum representing the values of the request type field for testing purposes
@@ -67,24 +76,30 @@ mod socket_listener {
         Unique,
     }
 
+    #[cfg(unix)]
+    type PlatformStream = UnixStream;
+
+    #[cfg(windows)]
+    type PlatformStream = NamedPipeClient;
+
     struct ServerTestBasics {
         server: Option<RedisServer>,
-        socket: UnixStream,
+        socket: PlatformStream,
     }
 
     struct ServerTestBasicsWithMock {
         server_mock: ServerMock,
-        socket: UnixStream,
+        socket: PlatformStream,
     }
 
     struct ClusterTestBasics {
         _cluster: Option<RedisCluster>,
-        socket: UnixStream,
+        socket: PlatformStream,
     }
 
     struct TestBasics {
         server: BackingServer,
-        socket: UnixStream,
+        socket: PlatformStream,
     }
 
     struct CommandComponents {
@@ -117,7 +132,7 @@ mod socket_listener {
         }
     }
 
-    fn get_response(buffer: &mut Vec<u8>, socket: Option<&mut UnixStream>) -> Response {
+    fn get_response(buffer: &mut Vec<u8>, socket: Option<&mut PlatformStream>) -> Response {
         if let Some(socket) = socket {
             let _size = read_from_socket(buffer, socket);
         }
@@ -125,7 +140,11 @@ mod socket_listener {
         decode_response(buffer, header_bytes, message_length as usize)
     }
 
-    fn assert_null_response(buffer: &mut Vec<u8>, socket: &mut UnixStream, expected_callback: u32) {
+    fn assert_null_response(
+        buffer: &mut Vec<u8>,
+        socket: &mut PlatformStream,
+        expected_callback: u32,
+    ) {
         assert_response(
             buffer,
             Some(socket),
@@ -135,7 +154,11 @@ mod socket_listener {
         );
     }
 
-    fn assert_ok_response(buffer: &mut Vec<u8>, socket: &mut UnixStream, expected_callback: u32) {
+    fn assert_ok_response(
+        buffer: &mut Vec<u8>,
+        socket: &mut PlatformStream,
+        expected_callback: u32,
+    ) {
         assert_response(
             buffer,
             Some(socket),
@@ -147,7 +170,7 @@ mod socket_listener {
 
     fn assert_error_response(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         expected_callback: u32,
         error_type: ResponseType,
     ) -> Response {
@@ -156,7 +179,7 @@ mod socket_listener {
 
     fn assert_value_response(
         buffer: &mut Vec<u8>,
-        socket: Option<&mut UnixStream>,
+        socket: Option<&mut PlatformStream>,
         expected_callback: u32,
         value: Value,
     ) -> Response {
@@ -169,14 +192,21 @@ mod socket_listener {
         )
     }
 
+    #[cfg(unix)]
     fn read_from_socket(buffer: &mut Vec<u8>, socket: &mut UnixStream) -> usize {
         buffer.resize(300, 0_u8);
         socket.read(buffer).unwrap()
     }
 
+    #[cfg(windows)]
+    fn read_from_socket(buffer: &mut Vec<u8>, socket: &mut NamedPipeClient) -> usize {
+        buffer.resize(300, 0_u8);
+        socket.try_read(buffer).unwrap()
+    }
+
     fn assert_response(
         buffer: &mut Vec<u8>,
-        socket: Option<&mut UnixStream>,
+        socket: Option<&mut PlatformStream>,
         expected_callback: u32,
         expected_value: Option<Value>,
         expected_response_type: ResponseType,
@@ -269,14 +299,24 @@ mod socket_listener {
         request
     }
 
-    fn write_request(buffer: &mut Vec<u8>, socket: &mut UnixStream, request: CommandRequest) {
+    #[cfg(unix)]
+    fn write_to_socket(buffer: &[u8], socket: &mut UnixStream) -> std::io::Result<()> {
+        socket.write_all(buffer)
+    }
+
+    #[cfg(windows)]
+    fn write_to_socket(buffer: &[u8], socket: &mut NamedPipeClient) -> std::io::Result<()> {
+        socket.write_all(buffer)
+    }
+
+    fn write_request(buffer: &mut Vec<u8>, socket: &mut PlatformStream, request: CommandRequest) {
         write_message(buffer, request);
-        socket.write_all(buffer).unwrap();
+        write_to_socket(buffer, socket).unwrap();
     }
 
     fn write_command_request(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         callback_index: u32,
         args: Vec<bytes::Bytes>,
         request_type: EnumOrUnknown<RequestType>,
@@ -289,7 +329,7 @@ mod socket_listener {
 
     fn write_transaction_request(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         callback_index: u32,
         commands_components: Vec<CommandComponents>,
     ) {
@@ -311,7 +351,7 @@ mod socket_listener {
 
     fn write_get(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         callback_index: u32,
         key: &str,
         args_pointer: bool,
@@ -328,7 +368,7 @@ mod socket_listener {
 
     fn write_set(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         callback_index: u32,
         key: &str,
         value: String,
@@ -346,7 +386,7 @@ mod socket_listener {
 
     fn write_blpop(
         buffer: &mut Vec<u8>,
-        socket: &mut UnixStream,
+        socket: &mut PlatformStream,
         callback_index: u32,
         key: &str,
         timeout: u32,
@@ -367,7 +407,7 @@ mod socket_listener {
 
     fn connect_to_redis(
         addresses: &[ConnectionAddr],
-        socket: &UnixStream,
+        socket: &PlatformStream,
         use_tls: Tls,
         cluster_mode: ClusterMode,
     ) {
@@ -396,7 +436,7 @@ mod socket_listener {
         socket_path: Option<String>,
         addresses: &[ConnectionAddr],
         cluster_mode: ClusterMode,
-    ) -> UnixStream {
+    ) -> PlatformStream {
         let socket_listener_state: Arc<ManualResetEvent> =
             Arc::new(ManualResetEvent::new(EventState::Unset));
         let cloned_state = socket_listener_state.clone();
@@ -414,7 +454,12 @@ mod socket_listener {
         socket_listener_state.wait();
         let path = path_arc.lock().unwrap();
         let path = path.as_ref().expect("Didn't get any socket path");
+
+        #[cfg(unix)]
         let socket = std::os::unix::net::UnixStream::connect(path).unwrap();
+        #[cfg(windows)]
+        let socket = ClientOptions::new().open(path).unwrap();
+
         connect_to_redis(addresses, &socket, use_tls, cluster_mode);
         socket
     }
@@ -527,7 +572,10 @@ mod socket_listener {
             .build()
             .unwrap()
             .block_on(async {
+                #[cfg(unix)]
                 let _ = UnixListener::bind(socket_path.clone()).unwrap();
+                #[cfg(windows)]
+                let _ = ServerOptions::new().create(socket_path.clone()).unwrap();
                 // UDS sockets require explicit removal of the socket file
                 close_socket(&socket_path);
             });

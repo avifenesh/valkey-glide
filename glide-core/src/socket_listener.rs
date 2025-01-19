@@ -28,6 +28,11 @@ use std::sync::RwLock;
 use std::{env, str};
 use std::{io, thread};
 use thiserror::Error;
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{
+    ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+};
+#[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 use tokio::runtime::Builder;
 use tokio::sync::mpsc;
@@ -52,15 +57,33 @@ pub const ZSET: &str = "zset";
 pub const HASH: &str = "hash";
 pub const STREAM: &str = "stream";
 
+#[cfg(unix)]
 /// struct containing all objects needed to read from a unix stream.
 struct UnixStreamListener {
     read_socket: Rc<UnixStream>,
     rotating_buffer: RotatingBuffer,
 }
 
+#[cfg(windows)]
+/// struct containing all objects needed to read from a named pipe.
+struct NamedPipeListener {
+    read_pipe: Rc<NamedPipeClient>,
+    rotating_buffer: RotatingBuffer,
+}
+
 /// struct containing all objects needed to write to a socket.
+#[cfg(unix)]
 struct Writer {
     socket: Rc<UnixStream>,
+    lock: Mutex<()>,
+    accumulated_outputs: Cell<Vec<u8>>,
+    closing_sender: Sender<ClosingReason>,
+}
+
+/// struct containing all objects needed to write to a named pipe.
+#[cfg(windows)]
+struct Writer {
+    pipe: Rc<NamedPipeClient>,
     lock: Mutex<()>,
     accumulated_outputs: Cell<Vec<u8>>,
     closing_sender: Sender<ClosingReason>,
@@ -77,6 +100,7 @@ impl<T: Message> From<ClosingReason> for PipeListeningResult<T> {
     }
 }
 
+#[cfg(unix)]
 impl UnixStreamListener {
     fn new(read_socket: Rc<UnixStream>) -> Self {
         // if the logger has been initialized by the user (external or internal) on info level this log will be shown
@@ -125,6 +149,55 @@ impl UnixStreamListener {
     }
 }
 
+#[cfg(windows)]
+impl NamedPipeListener {
+    fn new(read_pipe: Rc<NamedPipeClient>) -> Self {
+        // if the logger has been initialized by the user (external or internal) on info level this log will be shown
+        log_debug("connection", "new named pipe listener initiated");
+        let rotating_buffer = RotatingBuffer::new(65_536);
+        Self {
+            read_pipe,
+            rotating_buffer,
+        }
+    }
+
+    pub(crate) async fn next_values<TRequest: Message>(&mut self) -> PipeListeningResult<TRequest> {
+        loop {
+            // On Windows, there's no direct equivalent to `readable().await` for named pipes.
+            // We can attempt to read directly and handle potential "WouldBlock" errors.
+
+            let read_result = self
+                .read_pipe
+                .try_read_buf(self.rotating_buffer.current_buffer());
+            match read_result {
+                Ok(0) => {
+                    return ReadSocketClosed.into();
+                }
+                Ok(_) => {
+                    match self.rotating_buffer.get_requests() {
+                        Ok(requests) => {
+                            if !requests.is_empty() {
+                                return ReceivedValues(requests);
+                            }
+                            // continue to read from pipe
+                            continue;
+                        }
+                        Err(err) => return UnhandledError(err.into()).into(),
+                    };
+                }
+                Err(ref e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::Interrupted =>
+                {
+                    continue;
+                }
+                Err(err) => return UnhandledError(err.into()).into(),
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
 async fn write_to_output(writer: &Rc<Writer>) {
     let Ok(_guard) = writer.lock.try_lock() else {
         return;
@@ -138,7 +211,8 @@ async fn write_to_output(writer: &Rc<Writer>) {
         let mut total_written_bytes = 0;
         while total_written_bytes < output.len() {
             if let Err(err) = writer.socket.writable().await {
-                let _res = writer.closing_sender.send(err.into()).await; // we ignore the error, because it means that the reader was dropped, which is ok.
+                let _res = writer.closing_sender.send(err.into()).await;
+                // we ignore the error, because it means that the reader was dropped, which is ok.
                 return;
             }
             match writer.socket.try_write(&output[total_written_bytes..]) {
@@ -152,7 +226,8 @@ async fn write_to_output(writer: &Rc<Writer>) {
                     continue;
                 }
                 Err(err) => {
-                    let _res = writer.closing_sender.send(err.into()).await; // we ignore the error, because it means that the reader was dropped, which is ok.
+                    let _res = writer.closing_sender.send(err.into()).await;
+                    // we ignore the error, because it means that the reader was dropped, which is ok.
                 }
             }
         }
@@ -161,6 +236,59 @@ async fn write_to_output(writer: &Rc<Writer>) {
     }
 }
 
+#[cfg(windows)]
+async fn write_to_output(writer: &Rc<Writer>) {
+    let Ok(_guard) = writer.lock.try_lock() else {
+        return;
+    };
+
+    let mut output = writer.accumulated_outputs.take();
+    loop {
+        if output.is_empty() {
+            return;
+        }
+        let mut total_written_bytes = 0;
+        while total_written_bytes < output.len() {
+            // On Windows, there's no direct equivalent to `writable().await` for named pipes.
+            // We can attempt to write directly and handle potential "WouldBlock" errors.
+
+            match writer.pipe.try_write(&output[total_written_bytes..]) {
+                Ok(written_bytes) => {
+                    total_written_bytes += written_bytes;
+                }
+                Err(err)
+                    if err.kind() == io::ErrorKind::WouldBlock
+                        || err.kind() == io::ErrorKind::Interrupted =>
+                {
+                    continue;
+                }
+                Err(err) => {
+                    let _res = writer.closing_sender.send(err.into()).await;
+                    // we ignore the error, because it means that the reader was dropped, which is ok.
+                }
+            }
+        }
+        output.clear();
+        output = writer.accumulated_outputs.replace(output);
+    }
+}
+
+#[cfg(unix)]
+async fn write_closing_error(
+    err: ClosingError,
+    callback_index: u32,
+    writer: &Rc<Writer>,
+    identifier: &str,
+) -> Result<(), io::Error> {
+    let err = err.err_message;
+    log_error(identifier, err.as_str());
+    let mut response = Response::new();
+    response.callback_idx = callback_index;
+    response.value = Some(response::response::Value::ClosingError(err.into()));
+    write_to_writer(response, writer).await
+}
+
+#[cfg(windows)]
 async fn write_closing_error(
     err: ClosingError,
     callback_index: u32,
@@ -191,7 +319,8 @@ async fn write_result(
         Ok(value) => {
             if value != Value::Nil {
                 // Since null values don't require any additional data, they can be sent without any extra effort.
-                // Move the value to the heap and leak it. The wrapper should use `Box::from_raw` to recreate the box, use the value, and drop the allocation.
+                // Move the value to the heap and leak it.
+                // The wrapper should use `Box::from_raw` to recreate the box, use the value, and drop the allocation.
                 let reference = Box::leak(Box::new(value));
                 let raw_pointer = from_mut(reference);
                 Some(response::response::Value::RespPointer(raw_pointer as u64))
@@ -364,7 +493,6 @@ async fn invoke_script(
         .as_ref()
         .map(|keys| keys.iter().map(|e| e.as_ref()).collect())
         .unwrap_or_default();
-
     client
         .invoke_script(&hash, &keys, &args, routing)
         .await
@@ -567,9 +695,20 @@ async fn handle_requests(
     task::yield_now().await;
 }
 
+#[cfg(unix)]
 pub fn close_socket(socket_path: &String) {
     log_info("close_socket", format!("closing socket at {socket_path}"));
     let _ = std::fs::remove_file(socket_path);
+}
+
+#[cfg(windows)]
+pub fn close_socket(socket_path: &String) {
+    log_info(
+        "close_socket",
+        format!("closing named pipe at {socket_path}"),
+    );
+    // No action needed for closing a named pipe on Windows, as the server
+    // will automatically close the handle when the server is dropped.
 }
 
 async fn create_client(
@@ -585,6 +724,7 @@ async fn create_client(
     Ok(client)
 }
 
+#[cfg(unix)]
 async fn wait_for_connection_configuration_and_create_client(
     client_listener: &mut UnixStreamListener,
     writer: &Rc<Writer>,
@@ -605,8 +745,48 @@ async fn wait_for_connection_configuration_and_create_client(
     }
 }
 
+#[cfg(windows)]
+async fn wait_for_connection_configuration_and_create_client(
+    client_listener: &mut NamedPipeListener,
+    writer: &Rc<Writer>,
+    push_tx: Option<mpsc::UnboundedSender<PushInfo>>,
+) -> Result<Client, ClientCreationError> {
+    // Wait for the server's address
+    match client_listener.next_values::<ConnectionRequest>().await {
+        Closed(reason) => Err(ClientCreationError::SocketListenerClosed(reason)),
+        ReceivedValues(mut received_requests) => {
+            if let Some(request) = received_requests.pop() {
+                create_client(writer, request, push_tx).await
+            } else {
+                Err(ClientCreationError::UnhandledError(
+                    "No received requests".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
 async fn read_values_loop(
     mut client_listener: UnixStreamListener,
+    client: &Client,
+    writer: Rc<Writer>,
+) -> ClosingReason {
+    loop {
+        match client_listener.next_values().await {
+            Closed(reason) => {
+                return reason;
+            }
+            ReceivedValues(received_requests) => {
+                handle_requests(received_requests, client, &writer).await;
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+async fn read_values_loop(
+    mut client_listener: NamedPipeListener,
     client: &Client,
     writer: Rc<Writer>,
 ) -> ClosingReason {
@@ -651,6 +831,7 @@ async fn push_manager_loop(mut push_rx: mpsc::UnboundedReceiver<PushInfo>, write
     }
 }
 
+#[cfg(unix)]
 async fn listen_on_client_stream(socket: UnixStream) {
     let socket = Rc::new(socket);
     // Spawn a new task to listen on this client's stream
@@ -862,15 +1043,31 @@ pub fn start_socket_listener_internal<InitCallback>(
                 };
 
                 runtime.block_on(async move {
-                    let listener_socket = match UnixListener::bind(socket_path_cloned.clone()) {
-                        Err(err) => {
-                            log_error(
-                                "listen_on_socket",
-                                format!("Error failed to bind listening socket: {err}"),
-                            );
-                            return Err(err);
+                    #[cfg(unix)]
+                    let listener = {
+                        match UnixListener::bind(socket_path_cloned.clone()) {
+                            Err(err) => {
+                                log_error(
+                                    "listen_on_socket",
+                                    format!("Error failed to bind listening socket: {err}"),
+                                );
+                                return Err(err);
+                            }
+                            Ok(listener_socket) => listener_socket,
                         }
-                        Ok(listener_socket) => listener_socket,
+                    };
+                    #[cfg(windows)]
+                    let listener = {
+                        match ServerOptions::new().create(socket_path_cloned.clone()) {
+                            Err(err) => {
+                                log_error(
+                                    "listen_on_socket",
+                                    format!("Error failed to bind listening named pipe: {err}"),
+                                );
+                                return Err(err);
+                            }
+                            Ok(listener_socket) => listener_socket,
+                        }
                     };
 
                     // Signal initialization is successful.
@@ -881,7 +1078,8 @@ pub fn start_socket_listener_internal<InitCallback>(
 
                     let local_set_pool = LocalPoolHandle::new(num_cpus::get());
                     loop {
-                        match listener_socket.accept().await {
+                        #[cfg(unix)]
+                        match listener.accept().await {
                             Ok((stream, _addr)) => {
                                 local_set_pool
                                     .spawn_pinned(move || listen_on_client_stream(stream));
@@ -894,10 +1092,36 @@ pub fn start_socket_listener_internal<InitCallback>(
                                 break;
                             }
                         }
+                        #[cfg(windows)]
+                        match listener.accept().await {
+                            Ok(stream) => {
+                                let client =
+                                    match ClientOptions::new().open(socket_path_cloned.clone()) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            log_error(
+                                                "listen_on_socket",
+                                                format!("Error connecting to named pipe: {err}"),
+                                            );
+                                            continue;
+                                        }
+                                    };
+                                local_set_pool
+                                    .spawn_pinned(move || listen_on_client_stream(client));
+                            }
+                            Err(err) => {
+                                log_error(
+                                    "listen_on_socket",
+                                    format!("Error accepting connection: {err}"),
+                                );
+                                break;
+                            }
+                        }
                     }
 
                     // ensure socket file removal
-                    drop(listener_socket);
+                    drop(listener);
+                    #[cfg(unix)]
                     let _ = std::fs::remove_file(socket_path_cloned.clone());
 
                     // no more listening on socket - update the sockets db
