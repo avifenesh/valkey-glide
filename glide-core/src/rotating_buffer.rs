@@ -29,18 +29,17 @@ impl RotatingBuffer {
                 let start_pos = prev_position + bytes_read;
                 if (start_pos + request_len as usize) > buffer_len {
                     break;
-                } else {
-                    match T::parse_from_tokio_bytes(
-                        &buffer.slice(start_pos..start_pos + request_len as usize),
-                    ) {
-                        Ok(request) => {
-                            prev_position += request_len as usize + bytes_read;
-                            results.push(request);
-                        }
-                        Err(err) => {
-                            log_error("parse input", format!("Failed to parse request: {err}"));
-                            return Err(err.into());
-                        }
+                }
+                match T::parse_from_tokio_bytes(
+                    &buffer.slice(start_pos..start_pos + request_len as usize),
+                ) {
+                    Ok(request) => {
+                        prev_position += request_len as usize + bytes_read;
+                        results.push(request);
+                    }
+                    Err(err) => {
+                        log_error("parse input", format!("Failed to parse request: {err}"));
+                        return Err(err.into());
                     }
                 }
             } else {
