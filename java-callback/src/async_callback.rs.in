@@ -1,0 +1,124 @@
+use log::*;
+use tracing::Level;
+use crate::jni_c_header::*;
+use crate::spawn;
+use crate::redis::*;
+use anyhow::Error;
+use std::sync::{Arc, RwLock};
+use crossbeam_channel::{Receiver, SendError, Sender};
+
+foreign_class!(class RsLogger {
+    fn init() {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_thread_names(true)
+            .init();
+        info!("Rust logger initialized");
+    }
+});
+
+//#[derive(Clone)]
+struct ValkeyClient {
+    client: redis::Client,
+    connection: Arc<RwLock<Option<redis::aio::MultiplexedConnection>>>,
+    tx: Sender<(Box<dyn OnThreadEvent + Send>, String)>,
+    rx: Receiver<(Box<dyn OnThreadEvent + Send>, String)>,
+}
+
+foreign_class!(class ValkeyClient {
+    self_type ValkeyClient;
+    constructor new_client(url: &str) -> ValkeyClient {
+        let client = create_client_from_url(url)
+            .expect("Failed to create redis client");
+        let (tx, rx) = crossbeam_channel::unbounded();
+        ValkeyClient {
+            client,
+            connection: Arc::new(RwLock::new(None)),
+            tx, rx,
+        }
+    }
+});
+
+trait OnThreadEvent {
+    fn connected(&self);
+
+    fn handle(&self, s: &str);
+
+    fn exceptionally(&self, e: &str);
+}
+
+foreign_callback!(interface ThreadSafeObserver {
+    self_type OnThreadEvent + Send;
+    onConnected = OnThreadEvent::connected(&self);
+    onResponse = OnThreadEvent::handle(&self, s: &str);
+    onError = OnThreadEvent::exceptionally(&self, m: &str);
+});
+
+foreign_class!(class ThreadCallback {
+    fn connect(client: &mut ValkeyClient, cb: Box<dyn OnThreadEvent + Send>) {
+        let connection = &client.connection;
+        let rx = client.rx.clone();
+        let client = client.client.clone();
+        let arc = Arc::clone(connection);
+        if let Ok(guard) = arc.read() {
+            if guard.is_some() {
+                cb.exceptionally("client already connected");
+                return;
+            }
+        }
+        spawn(async move {
+            use redis::GlideConnectionOptions;
+            if let Ok(mut connection) = client.get_multiplexed_async_connection(GlideConnectionOptions::default()).await {
+                if let Ok(mut guard) = arc.write() {
+                    *guard = Some(connection.clone());
+                    cb.connected();
+                }
+
+                loop {
+                    match rx.recv() {
+                        Ok((cb, cmd)) => {
+                            let result = do_query_async(&mut connection, cmd).await;
+                            match result {
+                                Ok(s) => {
+                                    cb.handle(s.as_str());
+                                }
+                                Err(e) => {
+                                    cb.exceptionally(e.to_string().as_str());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            cb.exceptionally(e.to_string().as_str());
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    fn submit(cmd: &str, client: &ValkeyClient, cb: Box<dyn OnThreadEvent + Send>) {
+        use redis::aio::MultiplexedConnection;
+        match client.connection.read() {
+            Ok(guard) => {
+                match *guard {
+                    None => {
+                        cb.exceptionally("client not connected");
+                    },
+                    Some(ref c) => {
+                        let cmd = cmd.to_string();
+                        match client.tx.send((cb, cmd)) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                error!("{}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                cb.exceptionally("client not connected");
+            }
+        }
+    }
+
+});

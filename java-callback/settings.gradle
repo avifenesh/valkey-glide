@@ -1,0 +1,4 @@
+rootProject.name = 'glide'
+
+include 'client'
+include 'benchmarks'

@@ -1,0 +1,124 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'io.freefair.lombok' version '8.6'
+    id 'jacoco'
+    id 'com.diffplug.spotless' version '6.25.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+subprojects {
+    repositories {
+        // Runs for GITHUB_ACTIONS for testing release Maven deployment.
+        if(System.getenv("ORG_GRADLE_PROJECT_centralManualTestingAuthHeaderName")) {
+            maven {
+                name = "centralManualTesting"
+                url "https://central.sonatype.com/api/v1/publisher/deployments/download/"
+                credentials(HttpHeaderCredentials)
+                authentication {
+                    header(HttpHeaderAuthentication)
+                }
+            }
+        }
+        mavenCentral()
+    }
+    // minimal java compatibility level
+    plugins.withId('java') {
+        sourceCompatibility = targetCompatibility = "11"
+    }
+    tasks.withType(Test) {
+        useJUnitPlatform()
+
+        testLogging {
+            exceptionFormat "full"
+            events "started", "skipped", "passed", "failed"
+            showStandardStreams true
+        }
+        // TODO: add jacoco with code coverage
+        // finalizedBy jacocoTestReport, jacocoTestCoverageVerification
+    }
+
+    ext {
+        defaultReleaseVersion = "255.255.255"
+        failedTests = []
+    }
+
+    tasks.withType(Test) {
+        afterTest { TestDescriptor descriptor, TestResult result ->
+            if (result.resultType == TestResult.ResultType.FAILURE) {
+                failedTests << "${descriptor.className}.${descriptor.name}"
+            }
+        }
+    }
+
+    gradle.buildFinished {
+        if (!failedTests.empty) {
+            println "\nFailed tests for `:${project.name}`:"
+            failedTests.each { failedTest -> println failedTest }
+            println ""
+        }
+    }
+}
+
+// JaCoCo section (code coverage by unit tests)
+jacoco {
+    toolVersion = "0.8.9"
+}
+jacocoTestReport {
+    reports {
+        xml.configure { enabled false }
+        csv.configure { enabled false }
+    }
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it)
+        }))
+    }
+}
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            element = 'CLASS'
+            excludes = [
+            ]
+            limit {
+                counter = 'LINE'
+                minimum = 1.0
+            }
+            limit {
+                counter = 'BRANCH'
+                minimum = 1.0
+            }
+        }
+    }
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it)
+        }))
+    }
+}
+// TODO: add jacoco with code coverage
+// check.dependsOn jacocoTestCoverageVerification
+// End of JaCoCo section
+
+// Spotless section (code style)
+spotless {
+    java {
+        target fileTree('.') {
+            include '**/*.java'
+            exclude '**/build/**', '**/build-*/**', '**/protobuf/**', '**/ffi/callback/**.java', '**/glide/test/**'
+        }
+        licenseHeader('/** Copyright Valkey GLIDE Project Contributors - SPDX Identifier: Apache-2.0 */')
+        importOrder()
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+        googleJavaFormat('1.22.0').reflowLongStrings().groupArtifact('com.google.googlejavaformat:google-java-format')
+        indentWithTabs(2)
+        indentWithSpaces(4)
+    }
+}
+// End of Spotless section
