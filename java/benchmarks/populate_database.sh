@@ -54,23 +54,48 @@ echo "- Batch size: $BATCH_SIZE"
 echo "- Word count: $WORD_COUNT"
 echo ""
 
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-  echo -e "${RED}Docker is not running. Please start Docker and try again.${NC}"
-  exit 1
+# Try local execution first (more reliable than Docker for dependencies)
+echo -e "${BOLD}Starting database population using local execution...${NC}"
+
+# Prepare the native library
+if [ ! -f "src/main/resources/glide/benchmarks/libs/native/libglide_rs.so" ]; then
+  echo -e "${YELLOW}Setting up native library...${NC}"
+  if [ -f "./fix_native_loading.sh" ]; then
+    ./fix_native_loading.sh
+  else
+    echo -e "${RED}Native library setup script not found. Database population may fail.${NC}"
+  fi
 fi
 
-# Override environment variables to enable database population
-echo -e "${BOLD}Starting database population...${NC}"
-docker compose run \
-  -e SPRING_PROFILES_ACTIVE=populate \
-  -e BENCHMARK_POPULATE_ENABLED=true \
-  -e BENCHMARK_POPULATE_CLIENT=$CLIENT \
-  -e BENCHMARK_POPULATE_KEYS=$KEYS \
-  -e BENCHMARK_POPULATE_THREADS=$THREADS \
-  -e BENCHMARK_POPULATE_BATCH_SIZE=$BATCH_SIZE \
-  -e BENCHMARK_POPULATE_WORD_COUNT=$WORD_COUNT \
-  benchmark-app
+# Check if the native library has been built
+NATIVE_LIB_PATH="/home/fedora/valkey-glide/java/target/release/libglide_rs.so"
+
+if [ ! -f "$NATIVE_LIB_PATH" ]; then
+  echo -e "${YELLOW}Native library not found at $NATIVE_LIB_PATH${NC}"
+  echo -e "${BOLD}Building Valkey Glide core...${NC}"
+  
+  cd ../
+  cargo build --release
+  
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Valkey Glide core build failed. Cannot continue.${NC}"
+    exit 1
+  fi
+  
+  echo -e "${GREEN}Valkey Glide core built successfully.${NC}"
+  cd benchmarks/
+fi
+
+# Run the Java application directly with Gradle
+echo -e "${BOLD}Running database population with Gradle...${NC}"
+./gradlew bootRun --args="--spring.profiles.active=populate" \
+  -Djava.library.path=/home/fedora/valkey-glide/java/target/release \
+  -Dbenchmark.populate.enabled=true \
+  -Dbenchmark.populate.client=$CLIENT \
+  -Dbenchmark.populate.keys=$KEYS \
+  -Dbenchmark.populate.threads=$THREADS \
+  -Dbenchmark.populate.batch-size=$BATCH_SIZE \
+  -Dbenchmark.populate.word-count=$WORD_COUNT
 
 STATUS=$?
 
@@ -82,4 +107,4 @@ else
 fi
 
 echo -e "${YELLOW}TIP: To run benchmarks against the populated database, use:${NC}"
-echo "  docker compose up -d"
+echo "  ./run_local.sh"

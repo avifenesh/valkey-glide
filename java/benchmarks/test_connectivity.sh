@@ -12,20 +12,19 @@ echo -e "${BOLD}This script will test connectivity to both Valkey and Redis endp
 echo
 
 # Build Glide in release mode for optimal performance
-echo -e "${BOLD}Building Glide core in release mode...${NC}"
-cd ../..
-cd glide-core
+echo -e "${BOLD}Building Glide java bindings...${NC}"
+cd ../
 cargo build --release
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Glide core build failed. Please check the error and try again.${NC}"
+    echo -e "${RED}Glide java bindings build failed. Please check the error and try again.${NC}"
     exit 1
 fi
+echo -e "${GREEN}Glide java bindings build successful.${NC}"
 echo -e "${GREEN}Glide core build successful.${NC}"
 echo
 
 # Move back to the benchmarks directory
-cd .. # Back to valkey-glide root
-cd java/benchmarks
+cd benchmarks
 
 # Verify gradle wrapper exists
 if [ ! -f "./gradlew" ]; then
@@ -48,7 +47,6 @@ fi
 
 echo
 echo -e "${BOLD}To run the full benchmark:${NC}"
-echo "1. Build the Docker image: docker-compose build"
-echo "2. Start the benchmark services: docker-compose up -d"
-echo "3. Access the benchmark UI: http://localhost:8080"
-echo "4. View metrics in Grafana: http://localhost:3000"
+echo "1. Run the benchmark locally: ./run_local.sh"
+echo "2. Access the benchmark UI: http://localhost:8080"
+echo "3. Access Prometheus metrics: http://localhost:8080/actuator/prometheus"

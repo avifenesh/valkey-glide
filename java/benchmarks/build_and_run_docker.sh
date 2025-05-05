@@ -29,15 +29,15 @@ else
     mkdir -p src/main/resources/glide/benchmarks/libs/native/
     
     # Check if we need to copy the library
-    if [ ! -f "src/main/resources/glide/benchmarks/libs/native/libvalkey_glide.so" ]; then
+    if [ ! -f "src/main/resources/glide/benchmarks/libs/native/libglide_rs.so" ]; then
         echo -e "${BOLD}Copying native library...${NC}"
         # Copy from Java target if available
         if [ -f "../../java/target/release/libglide_rs.so" ]; then
-            cp ../../java/target/release/libglide_rs.so src/main/resources/glide/benchmarks/libs/native/libvalkey_glide.so
+            cp ../../java/target/release/libglide_rs.so src/main/resources/glide/benchmarks/libs/native/libglide_rs.so
         else
             echo -e "${RED}Native library not found at ../../java/target/release/libglide_rs.so${NC}"
             # Check if it's already in the current directory structure
-            if [ -f "src/main/resources/glide/benchmarks/libs/native/libvalkey_glide.so" ]; then
+            if [ -f "src/main/resources/glide/benchmarks/libs/native/libglide_rs.so" ]; then
                 echo -e "${GREEN}Library already exists in destination.${NC}"
             else
                 echo -e "${RED}No native library found. Cannot continue.${NC}"

@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Colors for terminal output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+echo -e "${BOLD}Valkey Glide Benchmark Direct Database Population${NC}"
+echo "---------------------------------------"
+
+# Check if there are any arguments
+if [ "$#" -gt 0 ]; then
+  if [ "$1" == "--help" ]; then
+    echo -e "${BOLD}Usage:${NC}"
+    echo "  ./direct_populate.sh [options]"
+    echo ""
+    echo "Options:"
+    echo "  --client <glide|redisson>  Specify the client to use for populating (default: glide)"
+    echo "  --keys <number>            Number of keys to populate (default: 500000)"
+    echo "  --threads <number>         Number of threads to use (default: 16)"
+    echo "  --batch-size <number>      Batch size for operations (default: 1000)"
+    echo "  --word-count <number>      Word count for generated values (default: 30)"
+    echo "  --help                     Show this help message"
+    exit 0
+  fi
+fi
+
+# Process arguments
+CLIENT="glide"
+KEYS=500000
+THREADS=16
+BATCH_SIZE=1000
+WORD_COUNT=30
+
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --client) CLIENT="$2"; shift ;;
+    --keys) KEYS="$2"; shift ;;
+    --threads) THREADS="$2"; shift ;;
+    --batch-size) BATCH_SIZE="$2"; shift ;;
+    --word-count) WORD_COUNT="$2"; shift ;;
+    *) echo "Unknown parameter: $1"; exit 1 ;;
+  esac
+  shift
+done
+
+echo -e "${BOLD}Configuration:${NC}"
+echo "- Client: $CLIENT"
+echo "- Keys: $KEYS"
+echo "- Threads: $THREADS"
+echo "- Batch size: $BATCH_SIZE"
+echo "- Word count: $WORD_COUNT"
+echo ""
+
+# Check if libglide_rs.so exists
+NATIVE_LIB_PATH="/home/fedora/valkey-glide/java/target/release/libglide_rs.so"
+
+if [ ! -f "$NATIVE_LIB_PATH" ]; then
+  echo -e "${RED}Native library not found at $NATIVE_LIB_PATH${NC}"
+  echo -e "${YELLOW}This is required for the benchmark to run${NC}"
+  exit 1
+fi
+
+echo -e "${GREEN}Found native library at $NATIVE_LIB_PATH${NC}"
+
+# First, verify our native library exists using our custom task
+echo -e "${BOLD}Verifying native library...${NC}"
+./gradlew verifyNativeLibrary
+
+if [ $? -ne 0 ]; then
+  echo -e "${RED}Native library verification failed${NC}"
+  exit 1
+fi
+
+# Run the application directly with system properties for configuration
+echo -e "${BOLD}Starting direct database population...${NC}"
+./gradlew bootRun --args="--spring.profiles.active=populate" \
+  -Djava.library.path=/home/fedora/valkey-glide/java/target/release \
+  -Dbenchmark.skip.dependency.check=true \
+  -Dbenchmark.populate.enabled=true \
+  -Dbenchmark.populate.client=$CLIENT \
+  -Dbenchmark.populate.keys=$KEYS \
+  -Dbenchmark.populate.threads=$THREADS \
+  -Dbenchmark.populate.batch-size=$BATCH_SIZE \
+  -Dbenchmark.populate.word-count=$WORD_COUNT
+
+STATUS=$?
+
+if [ $STATUS -eq 0 ]; then
+  echo -e "${GREEN}Database population completed successfully!${NC}"
+else
+  echo -e "${RED}Database population failed with status code $STATUS${NC}"
+  exit $STATUS
+fi

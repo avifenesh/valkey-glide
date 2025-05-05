@@ -12,7 +12,7 @@ echo "---------------------------------------"
 
 # Source directory setup
 NATIVE_LIB_SRC="../../java/target/release/libglide_rs.so"
-NATIVE_LIB_DST="src/main/resources/glide/benchmarks/libs/native/libvalkey_glide.so"
+NATIVE_LIB_DST="src/main/resources/glide/benchmarks/libs/native/libglide_rs.so"
 NATIVE_LIB_DST_DIR="src/main/resources/glide/benchmarks/libs/native"
 
 # Create destination directory if it doesn't exist

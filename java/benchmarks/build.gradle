@@ -2,53 +2,69 @@ plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     id 'application'
     id "com.google.osdetector" version "1.7.3"
-    id 'org.springframework.boot' version '3.2.4'
-    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.springframework.boot' version '2.7.18' // Using Spring Boot 2.x for Java 11 compatibility
+    id 'io.spring.dependency-management' version '1.1.0'
 }
 
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
-    mavenLocal()
+    
+    // Add local flat directory repository for local builds if needed
+    flatDir {
+        dirs '../build/libs', '../client/build/libs'
+    }
+    
+    // Add additional repository if using custom repository
+    maven {
+        url "https://repo1.maven.org/maven2/"
+    }
 }
 
 dependencies {
-    version = System.getenv("GLIDE_RELEASE_VERSION") ?: "1.0.0-SNAPSHOT"
-
-    // Use GLIDE in release mode
-    implementation "io.valkey:valkey-glide:${version}:${osdetector.classifier}"
+    // For customer proof benchmark, we'll use the locally built libraries directly
+    implementation fileTree(dir: '../build/libs', include: ['*.jar'])
+    implementation fileTree(dir: '../client/build/libs', include: ['*.jar'])
 
     // Web and monitoring
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     
-    // Redisson client for comparison benchmarks
-    implementation 'org.redisson:redisson:3.24.4'
+    // Redisson client for comparison benchmarks - add explicitly without version conflict resolution
+    implementation('org.redisson:redisson:3.23.4') {
+        exclude group: 'javax.cache', module: 'cache-api'
+    }
     
     // Utilities
-    implementation 'com.google.guava:guava:32.1.1-jre'
+    implementation 'com.google.guava:guava:31.1-jre' // Using older version for Java 11 compatibility
     implementation 'commons-cli:commons-cli:1.5.0'
-    implementation 'org.apache.commons:commons-lang3:3.13.0'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
     implementation 'org.apache.commons:commons-math3:3.5'
     implementation 'com.google.code.gson:gson:2.10.1'
     
     // Lombok for code simplification
-    compileOnly 'org.projectlombok:lombok:1.18.30'
-    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    compileOnly 'org.projectlombok:lombok:1.18.26'
+    annotationProcessor 'org.projectlombok:lombok:1.18.26'
     
     // Prometheus for metrics
     implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
-// Skip client publish dependency since we're using the locally built library
+// Explicitly set Java compatibility for both source and target
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
 
+// Skip client publish dependency since we're using the locally built library
 application {
     // Define the main class for the application.
     mainClass = 'glide.benchmarks.BenchmarkHttpApp'
-    // Runs for GITHUB_ACTIONS for testing release Maven deployment. Force benchmarks to use glide-rs from Maven Central
-    // deployments.
-    // Use the native library we've copied to resources
-    applicationDefaultJvmArgs = ['-Djava.library.path=src/main/resources/glide/benchmarks/libs/native']
+    // Use the native library from the target directory directly
+    applicationDefaultJvmArgs = [
+        '-Djava.library.path=/home/fedora/valkey-glide/java/target/release',
+        '-Dbenchmark.skip.dependency.check=true'
+    ]
 }
 
 bootJar {
@@ -59,6 +75,30 @@ bootJar {
 tasks.register('buildGlideRelease') {
     doLast {
         println "Skipping Glide build - libraries already exist"
+    }
+}
+
+// Add task to verify native library exists
+tasks.register('verifyNativeLibrary') {
+    doLast {
+        def nativeLibPath = new File('/home/fedora/valkey-glide/java/target/release/libglide_rs.so')
+        if (!nativeLibPath.exists()) {
+            throw new RuntimeException("Native library not found at expected location: ${nativeLibPath}. Please build the native library first.")
+        }
+        println "Native library found at ${nativeLibPath}"
+    }
+}
+
+// Add task for direct JAR creation without dependency checking
+tasks.register('createDirectJar', Jar) {
+    dependsOn verifyNativeLibrary
+    archiveBaseName = 'valkey-glide-benchmark-direct'
+    from sourceSets.main.output
+    manifest {
+        attributes(
+            'Main-Class': application.mainClass,
+            'Class-Path': configurations.runtimeClasspath.collect { it.getName() }.join(' ')
+        )
     }
 }
 
