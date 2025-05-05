@@ -6,22 +6,25 @@ import glide.benchmarks.clients.ValkeyClient;
 import glide.benchmarks.config.ConnectionSettings;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import io.valkey.GlideClusterClient;
-import io.valkey.GlideGenericClient;
-import io.valkey.GlideOptions;
-import io.valkey.Opt;
+import glide.api.GlideClient;
+import glide.api.GlideClusterClient;
+import glide.api.BaseClient;
+import glide.api.models.configuration.NodeAddress;
+import glide.api.models.configuration.GlideClientConfiguration;
+import glide.api.models.configuration.GlideClusterClientConfiguration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ExecutionException;
 
 /** Valkey GLIDE client implementation for benchmarking */
 public class GlideClientImpl implements ValkeyClient {
     private static final String CLIENT_NAME = "ValkeyGlide";
 
-    private GlideGenericClient glide;
+    private BaseClient glide;
     private ConnectionSettings settings;
     private MeterRegistry meterRegistry;
 
@@ -63,35 +66,41 @@ public class GlideClientImpl implements ValkeyClient {
      */
     private void initializeClient() {
         try {
-            // Create cluster client with optimized configuration
-            GlideClusterClient.Builder builder =
-                    GlideClusterClient.builder()
-                            .addNode(settings.getHost(), settings.getPort())
-                            .useSSL(settings.isUseSsl())
-                            .connectTimeout(settings.getConnectTimeout())
-                            .commandTimeout(settings.getTimeout())
-                            // Optimize connection pool for benchmark workloads
-                            .maxConnections(Math.max(settings.getMasterConnectionsPoolSize(), 32))
-                            .minConnections(Math.max(settings.getMasterConnectionsMinIdleSize(), 16));
+            if (settings.isClusterMode()) {
+                // Create cluster client configuration
+                GlideClusterClientConfiguration config = GlideClusterClientConfiguration.builder()
+                        .address(
+                                NodeAddress.builder()
+                                        .host(settings.getHost())
+                                        .port(settings.getPort())
+                                        .build())
+                        .useTLS(settings.isUseSsl())
+                        .build();
 
-            // Configure client options for best performance
-            GlideOptions options = GlideOptions.builder()
-                    .autoReconnect(true)
-                    .tcpNoDelay(true)  // Important for latency-sensitive operations
-                    .tcpKeepAlive(true)
-                    .readFrom(io.valkey.ReadFrom.MASTER_PREFERRED) // Use replicas when possible for reads
-                    .retryAttempts(settings.getRetryAttempts())
-                    .retryInterval(settings.getRetryInterval())
-                    .tcpReceiveBufferSize(1024 * 1024) // 1MB buffer for high throughput
-                    .tcpSendBufferSize(1024 * 1024)
-                    .build();
+                // Create the client asynchronously
+                try {
+                    glide = GlideClusterClient.createClient(config).get(10, TimeUnit.SECONDS);
+                } catch (InterruptedException | ExecutionException | java.util.concurrent.TimeoutException e) {
+                    throw new RuntimeException("Failed to create cluster client", e);
+                }
+            } else {
+                // Create standalone client configuration
+                GlideClientConfiguration config = GlideClientConfiguration.builder()
+                        .address(
+                                NodeAddress.builder()
+                                        .host(settings.getHost())
+                                        .port(settings.getPort())
+                                        .build())
+                        .useTLS(settings.isUseSsl())
+                        .build();
 
-            builder.options(options);
-
-            // Disable logging for performance
-            builder.logLevel(null);
-
-            glide = builder.build();
+                // Create the client asynchronously
+                try {
+                    glide = GlideClient.createClient(config).get(10, TimeUnit.SECONDS);
+                } catch (InterruptedException | ExecutionException | java.util.concurrent.TimeoutException e) {
+                    throw new RuntimeException("Failed to create client", e);
+                }
+            }
             
             // Pre-warm connection pool
             warmupConnectionPool();
@@ -140,12 +149,18 @@ public class GlideClientImpl implements ValkeyClient {
             return getTimer.record(
                     () -> {
                         // Using direct get command for best performance
-                        Opt<String> result = glide.get(key);
-                        if (result.hasValue()) {
-                            hitCount.incrementAndGet();
-                            return result.getValue();
-                        } else {
-                            missCount.incrementAndGet();
+                        CompletableFuture<String> future = glide.get(key);
+                        try {
+                            String result = future.get();
+                            if (result != null) {
+                                hitCount.incrementAndGet();
+                                return result;
+                            } else {
+                                missCount.incrementAndGet();
+                                return null;
+                            }
+                        } catch (Exception e) {
+                            errorCount.incrementAndGet();
                             return null;
                         }
                     });
@@ -171,17 +186,22 @@ public class GlideClientImpl implements ValkeyClient {
                 String[] keyArray = keys.toArray(new String[0]);
                 
                 // Execute multi-get operation
-                List<Opt<String>> values = glide.mget(keyArray);
-                
-                // Process results
-                for (int i = 0; i < keys.size(); i++) {
-                    Opt<String> optValue = values.get(i);
-                    if (optValue.hasValue()) {
-                        result.put(keys.get(i), optValue.getValue());
-                        hitCount.incrementAndGet();
-                    } else {
-                        missCount.incrementAndGet();
+                try {
+                    CompletableFuture<List<String>> future = glide.mget(keyArray);
+                    List<String> values = future.get();
+                    
+                    // Process results
+                    for (int i = 0; i < keys.size(); i++) {
+                        String value = values.get(i);
+                        if (value != null) {
+                            result.put(keys.get(i), value);
+                            hitCount.incrementAndGet();
+                        } else {
+                            missCount.incrementAndGet();
+                        }
                     }
+                } catch (Exception e) {
+                    errorCount.incrementAndGet();
                 }
             });
             
@@ -198,9 +218,14 @@ public class GlideClientImpl implements ValkeyClient {
             return setTimer.record(
                     () -> {
                         // Using direct set command for best performance
-                        glide.set(key, value);
-                        writeCount.incrementAndGet();
-                        return true;
+                        try {
+                            glide.set(key, value).get();
+                            writeCount.incrementAndGet();
+                            return true;
+                        } catch (Exception e) {
+                            errorCount.incrementAndGet();
+                            return false;
+                        }
                     });
         } catch (Exception e) {
             errorCount.incrementAndGet();
@@ -209,7 +234,7 @@ public class GlideClientImpl implements ValkeyClient {
     }
     
     /**
-     * Optimized bulk set operation using pipelining for better performance
+     * Optimized bulk set operation for better performance
      * 
      * @param keyValueMap Map of key-value pairs to set
      * @return true if operation was successful
@@ -221,10 +246,20 @@ public class GlideClientImpl implements ValkeyClient {
         
         try {
             return setTimer.record(() -> {
-                // Execute bulk set operation
-                glide.mset(keyValueMap);
-                writeCount.addAndGet(keyValueMap.size());
-                return true;
+                try {
+                    // Process all key-value pairs individually
+                    CompletableFuture<?>[] futures = new CompletableFuture[keyValueMap.size()];
+                    int i = 0;
+                    for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
+                        futures[i++] = glide.set(entry.getKey(), entry.getValue());
+                    }
+                    CompletableFuture.allOf(futures).get();
+                    writeCount.addAndGet(keyValueMap.size());
+                    return true;
+                } catch (Exception e) {
+                    errorCount.incrementAndGet();
+                    return false;
+                }
             });
         } catch (Exception e) {
             errorCount.incrementAndGet();
@@ -238,9 +273,14 @@ public class GlideClientImpl implements ValkeyClient {
             return setTimer.record(
                     () -> {
                         // Using setex for atomic operation
-                        glide.setex(key, expireSeconds, value);
-                        writeCount.incrementAndGet();
-                        return true;
+                        try {
+                            glide.setex(key, expireSeconds, value).get();
+                            writeCount.incrementAndGet();
+                            return true;
+                        } catch (Exception e) {
+                            errorCount.incrementAndGet();
+                            return false;
+                        }
                     });
         } catch (Exception e) {
             errorCount.incrementAndGet();
@@ -253,8 +293,13 @@ public class GlideClientImpl implements ValkeyClient {
         try {
             return deleteTimer.record(
                     () -> {
-                        long result = glide.del(key);
-                        return result > 0;
+                        try {
+                            long result = glide.del(key).get();
+                            return result > 0;
+                        } catch (Exception e) {
+                            errorCount.incrementAndGet();
+                            return false;
+                        }
                     });
         } catch (Exception e) {
             errorCount.incrementAndGet();
@@ -267,8 +312,13 @@ public class GlideClientImpl implements ValkeyClient {
         try {
             return existsTimer.record(
                     () -> {
-                        long result = glide.exists(key);
-                        return result > 0;
+                        try {
+                            long result = glide.exists(key).get();
+                            return result > 0;
+                        } catch (Exception e) {
+                            errorCount.incrementAndGet();
+                            return false;
+                        }
                     });
         } catch (Exception e) {
             errorCount.incrementAndGet();
@@ -290,26 +340,6 @@ public class GlideClientImpl implements ValkeyClient {
             } catch (Exception e) {
                 errorCount.incrementAndGet();
             }
-        }
-    }
-
-    /**
-     * Execute a pipeline of operations for better performance
-     * 
-     * @param callback Lambda that executes operations in a pipeline
-     */
-    public void pipeline(Runnable callback) {
-        try {
-            // Execute operations in a pipeline for better performance
-            glide.withPipeline(pipeline -> {
-                try {
-                    callback.run();
-                } catch (Exception e) {
-                    errorCount.incrementAndGet();
-                }
-            });
-        } catch (Exception e) {
-            errorCount.incrementAndGet();
         }
     }
 
@@ -338,15 +368,6 @@ public class GlideClientImpl implements ValkeyClient {
             stats.put("setCount", setTimer.count());
             stats.put("setP95Ms", setTimer.percentile(0.95, TimeUnit.MILLISECONDS));
             stats.put("setP99Ms", setTimer.percentile(0.99, TimeUnit.MILLISECONDS));
-        }
-
-        // Add connection pool metrics
-        try {
-            if (glide instanceof GlideClusterClient) {
-                // Could add cluster-specific metrics here in the future
-            }
-        } catch (Exception e) {
-            // Ignore any exceptions during stats collection
         }
 
         return new Gson().toJson(stats);

@@ -21,39 +21,46 @@ public class GlideAsyncClient implements AsyncClient<String> {
 
     @Override
     public void connectToValkey(ConnectionSettings connectionSettings) {
-
-        if (connectionSettings.clusterMode) {
-            GlideClusterClientConfiguration config =
-                    GlideClusterClientConfiguration.builder()
-                            .address(
-                                    NodeAddress.builder()
-                                            .host(connectionSettings.host)
-                                            .port(connectionSettings.port)
-                                            .build())
-                            .useTLS(connectionSettings.useSsl)
-                            .build();
-            try {
-                glideClient = GlideClusterClient.createClient(config).get(10, SECONDS);
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                throw new RuntimeException(e);
+        try {
+            if (connectionSettings.clusterMode) {
+                // Create cluster client configuration
+                GlideClusterClientConfiguration config =
+                        GlideClusterClientConfiguration.builder()
+                                .address(
+                                        NodeAddress.builder()
+                                                .host(connectionSettings.host)
+                                                .port(connectionSettings.port)
+                                                .build())
+                                .useTLS(connectionSettings.useSsl)
+                                .build();
+                
+                // Create the client asynchronously
+                try {
+                    glideClient = GlideClusterClient.createClient(config).get(10, SECONDS);
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    throw new RuntimeException("Failed to create cluster client", e);
+                }
+            } else {
+                // Create standalone client configuration
+                GlideClientConfiguration config =
+                        GlideClientConfiguration.builder()
+                                .address(
+                                        NodeAddress.builder()
+                                                .host(connectionSettings.host)
+                                                .port(connectionSettings.port)
+                                                .build())
+                                .useTLS(connectionSettings.useSsl)
+                                .build();
+                
+                // Create the client asynchronously
+                try {
+                    glideClient = GlideClient.createClient(config).get(10, SECONDS);
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    throw new RuntimeException("Failed to create client", e);
+                }
             }
-
-        } else {
-            GlideClientConfiguration config =
-                    GlideClientConfiguration.builder()
-                            .address(
-                                    NodeAddress.builder()
-                                            .host(connectionSettings.host)
-                                            .port(connectionSettings.port)
-                                            .build())
-                            .useTLS(connectionSettings.useSsl)
-                            .build();
-
-            try {
-                glideClient = GlideClient.createClient(config).get(10, SECONDS);
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                throw new RuntimeException(e);
-            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize Valkey GLIDE client", e);
         }
     }
 
@@ -69,10 +76,12 @@ public class GlideAsyncClient implements AsyncClient<String> {
 
     @Override
     public void closeConnection() {
-        try {
-            glideClient.close();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
+        if (glideClient != null) {
+            try {
+                glideClient.close();
+            } catch (ExecutionException e) {
+                throw new RuntimeException("Error closing Glide client", e);
+            }
         }
     }
 

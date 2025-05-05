@@ -1,4 +1,4 @@
-# Valkey Glide vs. Redisson Benchmark
+# Valkey Glide Benchmark
 
 This benchmark compares the performance of Valkey Glide Java client with Redisson client against Valkey/Redis endpoints.
 
@@ -9,7 +9,7 @@ This benchmark compares the performance of Valkey Glide Java client with Redisso
 
 ## Prerequisites
 
-- Java 11+
+- Java 11+ 
 - Rust/Cargo (for building Valkey Glide native core)
 - Access to Valkey/Redis endpoints
 
@@ -53,9 +53,9 @@ This will:
 - Populate the database with random key-value pairs
 - Use optimized batch operations for improved performance
 
-### 3. Run Full Benchmark Suite
+### 3. Run Benchmark Suite
 
-To run the benchmark suite locally (recommended method):
+To run the benchmark suite locally:
 
 ```bash
 ./run_local.sh
@@ -81,23 +81,40 @@ The configuration is handled through environment variables in the `.env` file:
 - Connection pool settings for both clients (for fair comparison)
 - Benchmark settings (key count, threads, etc.)
 
-## Manual Setup
+## Client Implementations
 
-If you prefer to run specific benchmark components manually:
+The benchmark includes two client implementations:
 
-1. Build Valkey Glide core:
+1. **Valkey Glide** - Using the io.valkey package
+2. **Redisson** - Using the org.redisson package
 
-   ```bash
-   cd ../
-   cargo build --release
-   ```
+Both clients are configured with identical connection pool settings for fair comparison.
 
-2. Run the benchmark app:
+## Performance Metrics
 
-   ```bash
-   cd benchmarks
-   ./gradlew bootRun
-   ```
+When running, the following metrics are available:
+
+- **Actuator Endpoints**: http://localhost:8080/actuator/metrics
+  - Detailed metrics for both Glide and Redisson operations
+  - Latency measurements (avg, P95, P99)
+  - Throughput statistics
+  - Connection pool utilization
+
+## Available API Endpoints
+
+When running, the following endpoints are available:
+
+- `GET http://localhost:8080/api/v1/glide/key/{key}` - GET operation with Glide
+- `GET http://localhost:8080/api/v1/redisson/key/{key}` - GET operation with Redisson
+- `POST http://localhost:8080/api/v1/{client}/key/{key}` - SET operation
+- `GET http://localhost:8080/api/v1/{client}/status` - Client stats
+- `GET http://localhost:8080/actuator/prometheus` - Prometheus metrics
+
+## Troubleshooting
+
+- **Native Library Issues**: Run the `fix_native_loading.sh` script to resolve issues with native library loading.
+- **Connectivity Issues**: Use the connectivity test to verify you can reach endpoints.
+- **Build Issues**: Ensure Java 11 is being used (not Java 17) as the benchmark is built for Java 11 compatibility
 
 ## Performance Optimizations
 
@@ -113,19 +130,3 @@ Several optimizations have been implemented to improve benchmark performance:
 
 - Using the same configuration as the customer's environment for fair comparison
 - Connection pooling parameters matched to customer settings
-
-## Available Endpoints
-
-When running, the following endpoints are available:
-
-- <http://localhost:8080/api/v1/glide/key/{key}> - GET operation with Glide
-- <http://localhost:8080/api/v1/redisson/key/{key}> - GET operation with Redisson
-- <http://localhost:8080/api/v1/{client}/key/{key}> (POST) - SET operation
-- <http://localhost:8080/api/v1/{client}/status> - Client stats
-- <http://localhost:8080/actuator/prometheus> - Prometheus metrics
-
-## Troubleshooting
-
-- **Native Library Issues**: Run the `fix_native_loading.sh` script to resolve issues with native library loading.
-- **Connectivity Issues**: Use the connectivity test to verify you can reach endpoints.
-- **Build Issues**: Ensure Java 11 is being used (not Java 17) as the benchmark is built for Java 11 compatibility
