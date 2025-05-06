@@ -1,0 +1,38 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'glide.benchmark'
+version = '0.1.0'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    // Valkey Glide Java client
+    implementation files('/home/fedora/valkey-glide/java/client/build/libs/glide-1.0.0-SNAPSHOT.jar')
+}
+
+application {
+    mainClass = 'glide.benchmark.ElastiCacheBenchmarkTest'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+    }
+}
+
+run {
+    systemProperty 'java.library.path', '/home/fedora/valkey-glide/java/target/release'
+    jvmArgs = ['-Xms1g', '-Xmx2g']
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '7.4'
+}

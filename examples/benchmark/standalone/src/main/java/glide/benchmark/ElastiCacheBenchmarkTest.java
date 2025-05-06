@@ -1,4 +1,4 @@
-package glide.examples;
+package glide.benchmark;
 
 import static glide.api.logging.Logger.Level.ERROR;
 import static glide.api.logging.Logger.Level.INFO;

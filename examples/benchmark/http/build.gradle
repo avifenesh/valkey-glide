@@ -1,0 +1,61 @@
+plugins {
+    id 'org.springframework.boot' version '2.7.8'
+    id 'io.spring.dependency-management' version '1.0.15.RELEASE'
+    id 'java'
+}
+
+group = 'glide.benchmark'
+version = '0.1.0'
+
+repositories {
+    mavenCentral()
+    // For local Glide client
+    mavenLocal()
+    // For Redisson
+    maven { url "https://repo.maven.apache.org/maven2" }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    // Micrometer for metrics
+    implementation 'io.micrometer:micrometer-core'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    
+    // Valkey Glide
+    implementation files('/home/fedora/valkey-glide/java/client/build/libs/glide-1.0.0-SNAPSHOT.jar')
+    
+    // Redisson
+    implementation 'org.redisson:redisson:3.20.0'
+    
+    // Lombok to reduce boilerplate
+    compileOnly 'org.projectlombok:lombok:1.18.24'
+    annotationProcessor 'org.projectlombok:lombok:1.18.24'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+// Task to display the location of native library
+task displayLibraryPath {
+    doLast {
+        println("Native library path: ${System.getProperty('java.library.path')}")
+    }
+}
+
+// Set the native library path for the run task
+tasks.withType(JavaExec) {
+    systemProperty 'java.library.path', '/home/fedora/valkey-glide/java/target/release'
+    jvmArgs = ['-Xms1g', '-Xmx2g']
+}
+
+test {
+    useJUnitPlatform()
+}
