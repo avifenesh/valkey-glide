@@ -1,0 +1,5 @@
+task runElastiCacheBenchmark(type: JavaExec) {
+    mainClass = 'glide.examples.ElastiCacheBenchmarkTest'
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ['-Djava.library.path=/home/fedora/valkey-glide/java/target/release']
+}

@@ -26,3 +26,4 @@ task runCluster(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'glide.examples.ClusterExample'
 }
+apply from: 'elastic-benchmark-task.gradle'
