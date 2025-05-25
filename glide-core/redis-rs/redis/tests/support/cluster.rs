@@ -72,14 +72,8 @@ impl ClusterType {
 
 fn port_in_use(addr: &str) -> bool {
     let socket_addr: std::net::SocketAddr = addr.parse().expect("Invalid address");
-    let socket = socket2::Socket::new(
-        socket2::Domain::for_address(socket_addr),
-        socket2::Type::STREAM,
-        None,
-    )
-    .expect("Failed to create socket");
-
-    socket.connect(&socket_addr.into()).is_ok()
+    std::net::TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_millis(100))
+        .is_ok()
 }
 
 pub struct RedisCluster {

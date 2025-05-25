@@ -12,7 +12,6 @@ use redis::{
     ConnectionAddr, GlideConnectionOptions, PushInfo, RedisConnectionInfo, RedisResult, Value,
     cluster_routing::{MultipleNodeRoutingInfo, RoutingInfo},
 };
-use socket2::{Domain, Socket, Type};
 use std::{
     env, fs, io, net::SocketAddr, net::TcpListener, ops::Deref, path::PathBuf, process,
     sync::Mutex, time::Duration,
@@ -88,16 +87,28 @@ pub enum Module {
 }
 
 pub fn get_listener_on_available_port() -> TcpListener {
-    let addr = &"127.0.0.1:0".parse::<SocketAddr>().unwrap().into();
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
-    socket.set_reuse_address(true).unwrap();
-    socket.bind(addr).unwrap();
-    socket.listen(1).unwrap();
-    TcpListener::from(socket)
+    TcpListener::bind("127.0.0.1:0").unwrap()
 }
 
 pub fn get_available_port() -> u16 {
-    // this is technically a race but we can't do better with
+    // Try multiple times to reduce race conditions
+    for _ in 0..10 {
+        let listener = get_listener_on_available_port();
+        let port = listener.local_addr().unwrap().port();
+
+        // Keep the listener alive a bit longer to reduce immediate reuse
+        std::mem::drop(listener);
+
+        // Small delay to reduce race condition window
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Check if port is still available
+        if TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok() {
+            return port;
+        }
+    }
+
+    // Fallback: this is technically a race but we can't do better with
     // the tools that redis gives us :(
     let listener = get_listener_on_available_port();
     listener.local_addr().unwrap().port()
