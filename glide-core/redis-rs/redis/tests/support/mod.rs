@@ -1,10 +1,7 @@
 #![allow(dead_code)]
 
 use std::path::Path;
-use std::{
-    env, fs, io, net::SocketAddr, net::TcpListener, path::PathBuf, process, thread::sleep,
-    time::Duration,
-};
+use std::{env, fs, io, net::TcpListener, path::PathBuf, process, thread::sleep, time::Duration};
 #[cfg(feature = "tls-rustls")]
 use std::{
     fs::File,
@@ -18,7 +15,6 @@ use redis::{ConnectionAddr, InfoDict, Pipeline, ProtocolVersion, RedisConnection
 #[cfg(feature = "tls-rustls")]
 use redis::{ClientTlsConfig, TlsCertificates};
 
-use socket2::{Domain, Socket, Type};
 use tempfile::TempDir;
 
 #[cfg(feature = "aio")]
@@ -364,12 +360,25 @@ impl RedisServer {
 /// process, so this must be used with care (since here we only use it for tests, it's
 /// mostly okay).
 pub fn get_random_available_port() -> u16 {
-    let addr = &"127.0.0.1:0".parse::<SocketAddr>().unwrap().into();
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
-    socket.set_reuse_address(true).unwrap();
-    socket.bind(addr).unwrap();
-    socket.listen(1).unwrap();
-    let listener = TcpListener::from(socket);
+    // Try multiple times to reduce race conditions
+    for _ in 0..10 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Keep the listener alive a bit longer to reduce immediate reuse
+        std::mem::drop(listener);
+
+        // Small delay to reduce race condition window
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Check if port is still available
+        if std::net::TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok() {
+            return port;
+        }
+    }
+
+    // Fallback: just return a port and hope for the best
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.local_addr().unwrap().port()
 }
 

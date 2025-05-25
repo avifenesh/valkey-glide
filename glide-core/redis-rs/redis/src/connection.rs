@@ -55,19 +55,7 @@ fn connect_tcp(addr: (&str, u16)) -> io::Result<TcpStream> {
     let socket = TcpStream::connect(addr)?;
     #[cfg(feature = "tcp_nodelay")]
     socket.set_nodelay(true)?;
-    #[cfg(feature = "keep-alive")]
-    {
-        //For now rely on system defaults
-        const KEEP_ALIVE: socket2::TcpKeepalive = socket2::TcpKeepalive::new();
-        //these are useless error that not going to happen
-        let socket2: socket2::Socket = socket.into();
-        socket2.set_tcp_keepalive(&KEEP_ALIVE)?;
-        Ok(socket2.into())
-    }
-    #[cfg(not(feature = "keep-alive"))]
-    {
-        Ok(socket)
-    }
+    Ok(socket)
 }
 
 #[inline(always)]
@@ -75,19 +63,7 @@ fn connect_tcp_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpSt
     let socket = TcpStream::connect_timeout(addr, timeout)?;
     #[cfg(feature = "tcp_nodelay")]
     socket.set_nodelay(true)?;
-    #[cfg(feature = "keep-alive")]
-    {
-        //For now rely on system defaults
-        const KEEP_ALIVE: socket2::TcpKeepalive = socket2::TcpKeepalive::new();
-        //these are useless error that not going to happen
-        let socket2: socket2::Socket = socket.into();
-        socket2.set_tcp_keepalive(&KEEP_ALIVE)?;
-        Ok(socket2.into())
-    }
-    #[cfg(not(feature = "keep-alive"))]
-    {
-        Ok(socket)
-    }
+    Ok(socket)
 }
 
 /// This function takes a redis URL string and parses it into a URL
@@ -898,7 +874,7 @@ pub(crate) fn create_rustls_config(
         not(feature = "tls-native-tls"),
         not(feature = "tls-rustls-webpki-roots")
     ))]
-    for cert in load_native_certs()? {
+    for cert in load_native_certs().certs {
         root_store.add(cert)?;
     }
 
