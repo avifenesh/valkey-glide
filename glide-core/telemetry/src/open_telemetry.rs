@@ -1,4 +1,3 @@
-use once_cell::sync::OnceCell;
 use opentelemetry::global::ObjectSafeSpan;
 use opentelemetry::trace::{SpanKind, TraceContextExt, TraceError};
 use opentelemetry::{global, trace::Tracer};
@@ -12,7 +11,7 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 use thiserror::Error;
 use url::Url;
@@ -470,7 +469,7 @@ pub struct GlideOpenTelemetry {}
 static TIMEOUT_COUNTER: Mutex<Option<opentelemetry::metrics::Counter<u64>>> = Mutex::new(None);
 
 /// Singleton instance of GlideOpenTelemetry. Ensures that telemetry setup happens only once across the application.
-static OTEL: OnceCell<RwLock<GlideOpenTelemetry>> = OnceCell::new();
+static OTEL: OnceLock<Result<RwLock<GlideOpenTelemetry>, GlideOTELError>> = OnceLock::new();
 
 /// Our interface to OpenTelemetry
 impl GlideOpenTelemetry {
@@ -479,25 +478,36 @@ impl GlideOpenTelemetry {
     /// This method should be called once for the given **process**
     /// If OpenTelemetry is already initialized, this method will return Ok(()) without reinitializing
     pub fn initialise(config: GlideOpenTelemetryConfig) -> Result<(), GlideOTELError> {
-        OTEL.get_or_try_init(|| {
-            Self::validate_config(config.clone())?;
+        OTEL.get_or_init(|| {
+            let result = Self::validate_config(config.clone()).and_then(|_| {
+                if let Some(traces_config) = config.traces.as_ref() {
+                    Self::initialise_trace_exporter(
+                        config.flush_interval_ms,
+                        &traces_config.trace_exporter,
+                    )?;
+                }
 
-            if let Some(traces_config) = config.traces.as_ref() {
-                Self::initialise_trace_exporter(
-                    config.flush_interval_ms,
-                    &traces_config.trace_exporter,
-                )?;
+                if let Some(metrics_config) = config.metrics.as_ref() {
+                    Self::initialise_metrics_exporter(
+                        config.flush_interval_ms,
+                        &metrics_config.metrics_exporter,
+                    )?;
+                    Self::init_metrics()?;
+                }
+
+                Ok(RwLock::new(GlideOpenTelemetry {}))
+            });
+            result
+        })
+        .as_ref()
+        .map_err(|e| match e {
+            GlideOTELError::TraceError(te) => GlideOTELError::Other(format!("Trace error: {}", te)),
+            GlideOTELError::MetricError(me) => {
+                GlideOTELError::Other(format!("Metric error: {}", me))
             }
-
-            if let Some(metrics_config) = config.metrics.as_ref() {
-                Self::initialise_metrics_exporter(
-                    config.flush_interval_ms,
-                    &metrics_config.metrics_exporter,
-                )?;
-                Self::init_metrics()?;
-            }
-
-            Ok::<RwLock<GlideOpenTelemetry>, GlideOTELError>(RwLock::new(GlideOpenTelemetry {}))
+            GlideOTELError::ReadLockError => GlideOTELError::ReadLockError,
+            GlideOTELError::WriteLockError => GlideOTELError::WriteLockError,
+            GlideOTELError::Other(msg) => GlideOTELError::Other(msg.clone()),
         })?;
 
         Ok(())
@@ -674,7 +684,7 @@ impl GlideOpenTelemetry {
 
     /// Check if OpenTelemetry is initialized
     pub fn is_initialized() -> bool {
-        OTEL.get().is_some()
+        OTEL.get().map_or(false, |result| result.is_ok())
     }
 }
 
