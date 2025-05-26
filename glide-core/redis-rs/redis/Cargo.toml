@@ -70,9 +70,9 @@ tokio-native-tls = { version = "0.3", optional = true }
 
 # Only needed for rustls
 rustls = { version = "0.23", features = ["ring"], default-features = false, optional = true }
-webpki-roots = { version = "1", optional = true }
+
 rustls-native-certs = { version = "0.8", optional = true }
-tokio-rustls = { version = "0.26", optional = true }
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
 rustls-pemfile = { version = "2", optional = true }
 rustls-pki-types = { version = "1", optional = true }
 
@@ -130,7 +130,7 @@ tls-rustls = [
     "rustls-pki-types",
 ]
 tls-rustls-insecure = ["tls-rustls"]
-tls-rustls-webpki-roots = ["tls-rustls", "webpki-roots"]
+
 tokio-comp = ["aio", "tokio/net", "tokio-retry2"]
 tokio-native-tls-comp = ["tokio-comp", "tls-native-tls", "tokio-native-tls"]
 tokio-rustls-comp = ["tokio-comp", "tls-rustls", "tokio-rustls"]
