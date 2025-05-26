@@ -13,8 +13,7 @@ use redis::{
     cluster_routing::{MultipleNodeRoutingInfo, RoutingInfo},
 };
 use std::{
-    env, fs, io, net::SocketAddr, net::TcpListener, ops::Deref, path::PathBuf, process,
-    sync::Mutex, time::Duration,
+    env, fs, io, net::TcpListener, ops::Deref, path::PathBuf, process, sync::Mutex, time::Duration,
 };
 use tempfile::TempDir;
 use tokio::sync::mpsc;

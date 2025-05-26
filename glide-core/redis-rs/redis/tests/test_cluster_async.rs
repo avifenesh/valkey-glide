@@ -1794,7 +1794,7 @@ mod cluster_async {
             // Get node IDs for migration
             let shards_info = client1
                 .route_command(
-                    &cmd("CLUSTER").arg("SHARDS"),
+                    cmd("CLUSTER").arg("SHARDS"),
                     RoutingInfo::SingleNode(SingleNodeRoutingInfo::SpecificNode(Route::new(
                         0,
                         SlotAddr::Master,
