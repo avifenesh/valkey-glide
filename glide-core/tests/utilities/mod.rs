@@ -11,7 +11,6 @@ use redis::{
     ConnectionAddr, GlideConnectionOptions, PushInfo, RedisConnectionInfo, RedisResult, Value,
     cluster_routing::{MultipleNodeRoutingInfo, RoutingInfo},
 };
-use std::sync::LazyLock;
 use std::{
     env, fs, io, net::TcpListener, ops::Deref, path::PathBuf, process, sync::Mutex, time::Duration,
 };
