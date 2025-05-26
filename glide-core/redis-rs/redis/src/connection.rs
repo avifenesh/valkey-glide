@@ -863,13 +863,7 @@ pub(crate) fn create_rustls_config(
 
     #[allow(unused_mut)]
     let mut root_store = RootCertStore::empty();
-    #[cfg(feature = "tls-rustls-webpki-roots")]
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    #[cfg(all(
-        feature = "tls-rustls",
-        not(feature = "tls-native-tls"),
-        not(feature = "tls-rustls-webpki-roots")
-    ))]
+    #[cfg(all(feature = "tls-rustls", not(feature = "tls-native-tls")))]
     for cert in load_native_certs().certs {
         root_store.add(cert)?;
     }
