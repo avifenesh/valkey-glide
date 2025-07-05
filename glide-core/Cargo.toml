@@ -29,6 +29,8 @@ tokio-retry2 = { version = "0.5", features = ["jitter"] }
 aws-config = "1"
 aws-credential-types = "1"
 aws-sigv4 = "1"
+http = "1"
+urlencoding = "2"
 
 protobuf = { version = "3", features = [
     "bytes",

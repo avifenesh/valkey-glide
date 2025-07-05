@@ -4,8 +4,9 @@ use glide_core::{
     client::Client,
     connection_request::{ConnectionRequest, NodeAddress, TlsMode},
 };
-use iai_callgrind::{black_box, library_benchmark, library_benchmark_group, main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use redis::{Value, cmd};
+use std::hint::black_box;
 use tokio::runtime::Builder;
 
 fn create_connection_request() -> ConnectionRequest {
@@ -32,88 +33,96 @@ where
     });
 }
 
-#[library_benchmark]
-fn just_setup() {
-    runner(|_| async {});
-}
-
-#[library_benchmark]
-fn send_message() {
-    runner(|mut client| async move {
-        client
-            .send_command(&black_box(cmd("PING")), None)
-            .await
-            .unwrap();
+fn just_setup(c: &mut Criterion) {
+    c.bench_function("just_setup", |b| {
+        b.iter(|| {
+            runner(|_| async {});
+        });
     });
 }
 
-#[library_benchmark]
-fn send_and_receive_messages() {
-    runner(|mut client| async move {
-        let mut command = cmd("SET");
-        command.arg("foo").arg("bar");
-        client
-            .send_command(&black_box(command), None)
-            .await
-            .unwrap();
-        let mut command = cmd("SET");
-        command.arg("baz").arg("foo");
-        client
-            .send_command(&black_box(command), None)
-            .await
-            .unwrap();
-        let mut command = cmd("MGET");
-        command.arg("baz").arg("foo");
-        let result = client
-            .send_command(&black_box(command), None)
-            .await
-            .unwrap();
-        assert!(
-            result
-                == Value::Array(vec![
-                    Value::BulkString(b"foo".to_vec()),
-                    Value::BulkString(b"bar".to_vec())
-                ])
-        )
+fn send_message(c: &mut Criterion) {
+    c.bench_function("send_message", |b| {
+        b.iter(|| {
+            runner(|mut client| async move {
+                client
+                    .send_command(&black_box(cmd("PING")), None)
+                    .await
+                    .unwrap();
+            });
+        });
     });
 }
 
-#[library_benchmark]
-fn lots_of_messages() {
-    runner(|mut client| async move {
-        for _ in 0..1000 {
-            let mut command = cmd("SET");
-            command.arg("foo").arg("bar");
-            client
-                .send_command(&black_box(command), None)
-                .await
-                .unwrap();
-            let mut command = cmd("SET");
-            command.arg("baz").arg("foo");
-            client
-                .send_command(&black_box(command), None)
-                .await
-                .unwrap();
-            let mut command = cmd("MGET");
-            command.arg("baz").arg("foo");
-            let result = client
-                .send_command(&black_box(command), None)
-                .await
-                .unwrap();
-            assert!(
-                result
-                    == Value::Array(vec![
-                        Value::BulkString(b"foo".to_vec()),
-                        Value::BulkString(b"bar".to_vec())
-                    ])
-            )
-        }
+fn send_and_receive_messages(c: &mut Criterion) {
+    c.bench_function("send_and_receive_messages", |b| {
+        b.iter(|| {
+            runner(|mut client| async move {
+                let mut command = cmd("SET");
+                command.arg("foo").arg("bar");
+                client
+                    .send_command(&black_box(command), None)
+                    .await
+                    .unwrap();
+                let mut command = cmd("SET");
+                command.arg("baz").arg("foo");
+                client
+                    .send_command(&black_box(command), None)
+                    .await
+                    .unwrap();
+                let mut command = cmd("MGET");
+                command.arg("baz").arg("foo");
+                let result = client
+                    .send_command(&black_box(command), None)
+                    .await
+                    .unwrap();
+                assert!(
+                    result
+                        == Value::Array(vec![
+                            Value::BulkString(b"foo".to_vec()),
+                            Value::BulkString(b"bar".to_vec())
+                        ])
+                )
+            });
+        });
     });
 }
 
-library_benchmark_group!(
-    name = cluster;
-    benchmarks = just_setup, send_message, send_and_receive_messages, lots_of_messages
-);
+fn lots_of_messages(c: &mut Criterion) {
+    c.bench_function("lots_of_messages", |b| {
+        b.iter(|| {
+            runner(|mut client| async move {
+                for _ in 0..1000 {
+                    let mut command = cmd("SET");
+                    command.arg("foo").arg("bar");
+                    client
+                        .send_command(&black_box(command), None)
+                        .await
+                        .unwrap();
+                    let mut command = cmd("SET");
+                    command.arg("baz").arg("foo");
+                    client
+                        .send_command(&black_box(command), None)
+                        .await
+                        .unwrap();
+                    let mut command = cmd("MGET");
+                    command.arg("baz").arg("foo");
+                    let result = client
+                        .send_command(&black_box(command), None)
+                        .await
+                        .unwrap();
+                    assert!(
+                        result
+                            == Value::Array(vec![
+                                Value::BulkString(b"foo".to_vec()),
+                                Value::BulkString(b"bar".to_vec())
+                            ])
+                    )
+                }
+            });
+        });
+    });
+}
 
-main!(library_benchmark_groups = cluster);
+criterion_group!(cluster, just_setup, send_message, send_and_receive_messages, lots_of_messages);
+criterion_main!(cluster);
