@@ -1,0 +1,30 @@
+13:38:27.434 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - === VALKEY CLIENT BENCHMARK ===
+13:38:27.436 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - Configuration:
+13:38:27.436 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -   Host: clustercfg.testing-cluster.ey5v7d.use2.cache.amazonaws.com:6379
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -   Target QPS: 10000.0
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -   Test Duration: 120s
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -   Checkpoint Interval: 30s
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -   Checkpoint Directory: benchmark_checkpoints_20250908_133827
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - 
+13:38:27.437 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - 🧹 Cleaning database before test ...
+13:38:27.608 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - ✅ Database cleaned successfully
+13:38:27.739 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - ✅ GLIDE client connected
+13:38:27.739 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -    Using implementation: glide.api.GlideClusterClient
+13:38:27.739 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -    Class loader: jdk.internal.loader.ClassLoaders$AppClassLoader@639fee48
+13:38:27.739 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark -    Module: unnamed module @eec5a4a
+13:38:27.739 [main] INFO  polyglot.benchmark.ValkeyClientBenchmark - 🔥 Warming up client...
+13:38:57.749 [main] ERROR polyglot.benchmark.ValkeyClientBenchmark - Benchmark failed: java.util.concurrent.TimeoutException
+java.util.concurrent.ExecutionException: java.util.concurrent.TimeoutException
+	at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:396)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2073)
+	at polyglot.benchmark.ValkeyClientBenchmark.warmup(ValkeyClientBenchmark.java:327)
+	at polyglot.benchmark.ValkeyClientBenchmark.run(ValkeyClientBenchmark.java:242)
+	at polyglot.benchmark.ValkeyClientBenchmark.main(ValkeyClientBenchmark.java:136)
+Caused by: java.util.concurrent.TimeoutException: null
+	at java.base/java.util.concurrent.CompletableFuture$Timeout.run(CompletableFuture.java:2920)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)

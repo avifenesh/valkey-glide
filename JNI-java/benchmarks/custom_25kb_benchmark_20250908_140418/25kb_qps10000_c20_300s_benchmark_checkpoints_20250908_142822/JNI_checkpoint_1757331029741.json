@@ -1,0 +1,34 @@
+{
+  "implementation" : "JNI",
+  "timestamp" : 1757331029741,
+  "set_commands" : 240193,
+  "get_commands" : 959799,
+  "get_hits" : 767833,
+  "get_misses" : 191966,
+  "resources" : {
+    "process_cpu_percent" : 10.830673915529268,
+    "system_cpu_percent" : 14.392191105844198,
+    "heap_used_mb" : 1748,
+    "heap_max_mb" : 6144,
+    "total_memory_mb" : 1766,
+    "physical_memory_mb" : 28403
+  },
+  "set_latency" : {
+    "count" : 240193,
+    "mean" : 0.8436577752224265,
+    "p50" : 0.475673,
+    "p99" : 2.31592262
+  },
+  "get_hit_latency" : {
+    "count" : 767835,
+    "mean" : 0.9307006652679135,
+    "p50" : 0.5433395,
+    "p99" : 2.448663989999999
+  },
+  "get_miss_latency" : {
+    "count" : 191966,
+    "mean" : 0.766070330204306,
+    "p50" : 0.380494,
+    "p99" : 2.6106197399999997
+  }
+}
