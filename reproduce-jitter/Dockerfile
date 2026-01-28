@@ -1,0 +1,73 @@
+FROM amazonlinux:2023
+
+# Install dependencies
+RUN dnf install -y \
+    nodejs \
+    gcc \
+    cmake \
+    git \
+    unzip \
+    tar \
+    xz \
+    && dnf clean all
+
+# Install protoc
+RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protoc-3.20.3-linux-x86_64.zip \
+    && unzip protoc-3.20.3-linux-x86_64.zip -d /usr/local \
+    && rm protoc-3.20.3-linux-x86_64.zip
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install zig for cargo-zigbuild
+RUN curl -LO https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz \
+    && tar -xf zig-x86_64-linux-0.15.2.tar.xz -C /opt \
+    && rm zig-x86_64-linux-0.15.2.tar.xz
+ENV PATH="${PATH}:/opt/zig-x86_64-linux-0.15.2"
+
+RUN cargo install --locked cargo-zigbuild@0.21.3
+
+WORKDIR /app
+
+# Copy the repository
+COPY . /app/valkey-glide
+
+# Create test directory
+RUN mkdir -p /app/test-npm /app/test-local
+
+# Create test script
+COPY reproduce-jitter/index.mjs /app/test-npm/index.mjs
+COPY reproduce-jitter/index.mjs /app/test-local/index.mjs
+COPY reproduce-jitter/run.sh /app/test-npm/run.sh
+COPY reproduce-jitter/run.sh /app/test-local/run.sh
+RUN chmod +x /app/test-npm/run.sh /app/test-local/run.sh
+
+# Build local version from PR branch
+WORKDIR /app/valkey-glide/node
+RUN npm install
+WORKDIR /app/valkey-glide/node/rust-client
+RUN npm install
+WORKDIR /app/valkey-glide/node
+ENV BUILD_MODE=release
+RUN npm run prereq
+RUN npm run build-protobuf
+WORKDIR /app/valkey-glide/node/rust-client
+RUN npm run build:release:gnu
+RUN npm run postbuild:copy-node
+WORKDIR /app/valkey-glide/node
+RUN npm run build:ts
+
+# Setup test directories
+WORKDIR /app/test-npm
+RUN npm init -y && npm install @valkey/valkey-glide
+
+WORKDIR /app/test-local
+RUN npm init -y && npm install /app/valkey-glide/node
+
+WORKDIR /app
+
+COPY reproduce-jitter/compare.sh /app/compare.sh
+RUN chmod +x /app/compare.sh
+
+CMD ["/app/compare.sh"]

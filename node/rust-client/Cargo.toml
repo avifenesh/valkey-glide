@@ -11,7 +11,7 @@ authors = ["Valkey GLIDE Maintainers"]
 crate-type = ["cdylib"]
 
 [dependencies]
-redis = { path = "../../glide-core/redis-rs/redis", features = ["aio", "tokio-comp", "tokio-rustls-comp"] }
+redis = { path = "../../glide-core/redis-rs/redis", features = ["aio", "tokio-comp", "tokio-rustls-comp", "tls-rustls-insecure"] }
 glide-core = { path = "../../glide-core", features = ["socket-layer"] }
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
 napi = { version = "2", default-features = false, features = ["napi8"] }

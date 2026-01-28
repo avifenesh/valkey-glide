@@ -1,0 +1,91 @@
+FROM amazonlinux:2023
+
+# Install dependencies
+RUN dnf install -y \
+    nodejs \
+    gcc \
+    gcc-c++ \
+    cmake \
+    git \
+    unzip \
+    tar \
+    xz \
+    openssl-devel \
+    clang \
+    && dnf clean all
+
+# Install protoc (ARM64 version)
+RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protoc-3.20.3-linux-aarch_64.zip \
+    && unzip protoc-3.20.3-linux-aarch_64.zip -d /usr/local \
+    && rm protoc-3.20.3-linux-aarch_64.zip
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# Copy the repository
+COPY . /app/valkey-glide
+
+# Create test directories
+RUN mkdir -p /app/test-npm /app/test-local
+
+# CRITICAL: Remove ALL Rust caches and target directories for completely clean build
+RUN rm -rf /app/valkey-glide/target \
+    /app/valkey-glide/node/rust-client/target \
+    /app/valkey-glide/ffi/target \
+    /app/valkey-glide/java/target \
+    /app/valkey-glide/glide-core/target \
+    /root/.cargo/registry \
+    /root/.cargo/git \
+    /root/.cargo/.package-cache \
+    /app/valkey-glide/Cargo.lock \
+    /app/valkey-glide/node/rust-client/Cargo.lock
+
+# Verify .cargo/config.toml is removed (no jitter fix)
+RUN rm -rf /app/valkey-glide/.cargo/config.toml || true
+RUN echo "=== Verifying no .cargo/config.toml exists ===" && \
+    (ls -la /app/valkey-glide/.cargo/ 2>&1 || echo "No .cargo directory - GOOD")
+
+# Verify aws-lc-rs version requirement is in Cargo.toml
+RUN echo "=== Checking aws-lc-rs version in Cargo.toml ===" && \
+    grep -r "aws-lc-rs" /app/valkey-glide/glide-core/Cargo.toml
+
+# Build local version WITHOUT the jitter fix
+WORKDIR /app/valkey-glide/node
+RUN npm install
+WORKDIR /app/valkey-glide/node/rust-client
+RUN npm install
+WORKDIR /app/valkey-glide/node
+ENV BUILD_MODE=release
+RUN npm run prereq
+RUN npm run build-protobuf
+WORKDIR /app/valkey-glide/node/rust-client
+
+# Use napi build for proper binding generation
+RUN npm run build:release 2>&1 | tee /tmp/build.log
+RUN echo "=== Checking aws-lc-rs version used ===" && \
+    grep -i "aws-lc" /tmp/build.log | head -10 || echo "aws-lc-rs compilation info not found"
+
+WORKDIR /app/valkey-glide/node
+RUN npm run build:ts
+
+# Setup test directories
+WORKDIR /app/test-npm
+RUN npm init -y && npm install @valkey/valkey-glide
+
+WORKDIR /app/test-local
+RUN npm init -y && npm install /app/valkey-glide/node
+
+# Copy test files
+COPY reproduce-jitter/index-cluster.mjs /app/test-npm/index.mjs
+COPY reproduce-jitter/index-cluster.mjs /app/test-local/index.mjs
+COPY reproduce-jitter/run.sh /app/test-npm/run.sh
+COPY reproduce-jitter/run.sh /app/test-local/run.sh
+COPY reproduce-jitter/compare-cluster.sh /app/compare.sh
+RUN chmod +x /app/test-npm/run.sh /app/test-local/run.sh /app/compare.sh
+
+WORKDIR /app
+
+CMD ["/bin/bash"]
