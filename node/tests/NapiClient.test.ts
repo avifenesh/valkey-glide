@@ -13,6 +13,7 @@ import {
     expect,
     it,
 } from "@jest/globals";
+import { ValkeyCluster } from "../../utils/TestUtils";
 import {
     Batch,
     ClosingError,
@@ -29,23 +30,52 @@ import {
     Script,
     Transaction,
 } from "../build-ts";
+import { getServerVersion, parseEndpoints } from "./TestUtilities";
 
-const CLUSTER_PORTS = process.env.CLUSTER_ENDPOINTS || "127.0.0.1:37287";
-const STANDALONE_PORT = process.env.STAND_ALONE_ENDPOINT || "127.0.0.1:35086";
-
-function parseEndpoint(endpoint: string): { host: string; port: number } {
-    const [host, portStr] = endpoint.split(":");
-    return { host, port: parseInt(portStr, 10) };
-}
+const CLEANUP_TIMEOUT = 10000;
 
 describe("NAPI Client Integration Tests", () => {
+    let standaloneCluster: ValkeyCluster;
+    let clusterCluster: ValkeyCluster;
+
+    // Convert ValkeyCluster addresses to the {host, port}[] format used by createClient
+    function toClientAddresses(
+        addresses: [string, number][],
+    ): { host: string; port: number }[] {
+        return addresses.map(([host, port]) => ({ host, port }));
+    }
+
+    beforeAll(async () => {
+        const standaloneAddresses = global.STAND_ALONE_ENDPOINT as string;
+        standaloneCluster = standaloneAddresses
+            ? await ValkeyCluster.initFromExistingCluster(
+                  false,
+                  parseEndpoints(standaloneAddresses),
+                  getServerVersion,
+              )
+            : await ValkeyCluster.createCluster(false, 1, 1, getServerVersion);
+
+        const clusterAddresses = global.CLUSTER_ENDPOINTS as string;
+        clusterCluster = clusterAddresses
+            ? await ValkeyCluster.initFromExistingCluster(
+                  true,
+                  parseEndpoints(clusterAddresses),
+                  getServerVersion,
+              )
+            : await ValkeyCluster.createCluster(true, 3, 1, getServerVersion);
+    }, 120000);
+
+    afterAll(async () => {
+        if (standaloneCluster) await standaloneCluster.close();
+        if (clusterCluster) await clusterCluster.close();
+    }, CLEANUP_TIMEOUT);
+
     describe("GlideClient (Standalone)", () => {
         let client: GlideClient;
 
         beforeAll(async () => {
-            const endpoint = parseEndpoint(STANDALONE_PORT);
             client = await GlideClient.createClient({
-                addresses: [endpoint],
+                addresses: toClientAddresses(standaloneCluster.getAddresses()),
             });
         });
 
@@ -290,7 +320,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should throw error after close", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
 
                 tempClient.close();
@@ -303,7 +335,9 @@ describe("NAPI Client Integration Tests", () => {
         describe("Error Propagation", () => {
             it("should throw ClosingError for script on closed client", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
                 tempClient.close();
                 const script = new Script("return 1");
@@ -315,7 +349,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should throw ClosingError for updateConnectionPassword on closed client", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
                 tempClient.close();
                 await expect(
@@ -328,7 +364,9 @@ describe("NAPI Client Integration Tests", () => {
             it("should handle multiple sequential clients", async () => {
                 for (let i = 0; i < 3; i++) {
                     const tempClient = await GlideClient.createClient({
-                        addresses: [parseEndpoint(STANDALONE_PORT)],
+                        addresses: toClientAddresses(
+                            standaloneCluster.getAddresses(),
+                        ),
                     });
 
                     const result = await tempClient.set(
@@ -369,7 +407,9 @@ describe("NAPI Client Integration Tests", () => {
         describe("Inflight Limits", () => {
             it("should enforce inflight limit for batches", async () => {
                 const limitedClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                     inflightRequestsLimit: 1,
                 });
 
@@ -409,7 +449,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should enforce inflight limit for script invocations", async () => {
                 const limitedClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                     inflightRequestsLimit: 1,
                 });
 
@@ -454,7 +496,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should enforce inflight limit for batch operations", async () => {
                 const limitedClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                     inflightRequestsLimit: 1,
                 });
 
@@ -487,7 +531,9 @@ describe("NAPI Client Integration Tests", () => {
         describe("Protocol Versions", () => {
             it("should work with RESP2", async () => {
                 const resp2Client = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                     protocol: ProtocolVersion.RESP2,
                 });
 
@@ -507,7 +553,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should work with RESP3", async () => {
                 const resp3Client = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                     protocol: ProtocolVersion.RESP3,
                 });
 
@@ -529,7 +577,9 @@ describe("NAPI Client Integration Tests", () => {
         describe("Client Lifecycle", () => {
             it("should reject in-flight requests on close", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
 
                 const promises = [];
@@ -559,7 +609,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should handle double close gracefully", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
 
                 await tempClient.set("double-close-key", "value");
@@ -571,7 +623,9 @@ describe("NAPI Client Integration Tests", () => {
 
             it("should throw ClosingError for operations after close", async () => {
                 const tempClient = await GlideClient.createClient({
-                    addresses: [parseEndpoint(STANDALONE_PORT)],
+                    addresses: toClientAddresses(
+                        standaloneCluster.getAddresses(),
+                    ),
                 });
 
                 tempClient.close();
@@ -587,9 +641,8 @@ describe("NAPI Client Integration Tests", () => {
         let clusterClient: GlideClusterClient;
 
         beforeAll(async () => {
-            const endpoints = CLUSTER_PORTS.split(",").map(parseEndpoint);
             clusterClient = await GlideClusterClient.createClient({
-                addresses: endpoints,
+                addresses: toClientAddresses(clusterCluster.getAddresses()),
             });
         });
 
@@ -720,7 +773,7 @@ describe("NAPI Client Integration Tests", () => {
 
         beforeAll(async () => {
             client = await GlideClient.createClient({
-                addresses: [parseEndpoint(STANDALONE_PORT)],
+                addresses: toClientAddresses(standaloneCluster.getAddresses()),
             });
         });
 
