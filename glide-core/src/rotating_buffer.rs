@@ -11,6 +11,8 @@ pub struct RotatingBuffer {
     backing_buffer: BytesMut,
 }
 
+const READ_RESERVE_SIZE: usize = 4096;
+
 impl RotatingBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
@@ -55,7 +57,7 @@ impl RotatingBuffer {
         // reclaim space at the beginning until we ask for more capacity.
         // We reserve a reasonable chunk to avoid small allocations/compactions.
         if self.backing_buffer.capacity() - self.backing_buffer.len() < 1024 {
-            self.backing_buffer.reserve(4096);
+            self.backing_buffer.reserve(READ_RESERVE_SIZE);
         }
         &mut self.backing_buffer
     }
