@@ -21,37 +21,29 @@ impl RotatingBuffer {
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
         let mut results: Vec<T> = vec![];
-        loop {
-            // Peek at the buffer to see if we have a full request
-            // decode_var returns Some((value, bytes_read)) if successful
-            match u32::decode_var(&self.backing_buffer[..]) {
-                Some((request_len, varint_len)) => {
-                    let total_len = varint_len + request_len as usize;
-                    if self.backing_buffer.len() >= total_len {
-                        // Extract the full message including length prefix
-                        // split_to is O(1) and leaves the remaining bytes in self.backing_buffer
-                        let message_buf = self.backing_buffer.split_to(total_len).freeze();
+        // Peek at the buffer to see if we have a full request
+        // decode_var returns Some((value, bytes_read)) if successful
+        while let Some((request_len, varint_len)) = u32::decode_var(&self.backing_buffer[..]) {
+            let total_len = varint_len + request_len as usize;
+            if self.backing_buffer.len() >= total_len {
+                // Extract the full message including length prefix
+                // split_to is O(1) and leaves the remaining bytes in self.backing_buffer
+                let message_buf = self.backing_buffer.split_to(total_len).freeze();
 
-                        // Parse the message body, skipping the length prefix
-                        let body = message_buf.slice(varint_len..);
-                        match T::parse_from_tokio_bytes(&body) {
-                            Ok(request) => {
-                                results.push(request);
-                            }
-                            Err(err) => {
-                                log_error("parse input", format!("Failed to parse request: {err}"));
-                                return Err(err.into());
-                            }
-                        }
-                    } else {
-                        // We have the length, but not enough data for the body.
-                        break;
+                // Parse the message body, skipping the length prefix
+                let body = message_buf.slice(varint_len..);
+                match T::parse_from_tokio_bytes(&body) {
+                    Ok(request) => {
+                        results.push(request);
+                    }
+                    Err(err) => {
+                        log_error("parse input", format!("Failed to parse request: {err}"));
+                        return Err(err.into());
                     }
                 }
-                None => {
-                    // Not enough data to decode the length prefix.
-                    break;
-                }
+            } else {
+                // We have the length, but not enough data for the body.
+                break;
             }
         }
         Ok(results)
