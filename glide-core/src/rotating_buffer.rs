@@ -50,6 +50,13 @@ impl RotatingBuffer {
     }
 
     pub fn current_buffer(&mut self) -> &mut BytesMut {
+        // Ensure there is enough space to read more data.
+        // split_to advances the read pointer, but BytesMut might not automatically
+        // reclaim space at the beginning until we ask for more capacity.
+        // We reserve a reasonable chunk to avoid small allocations/compactions.
+        if self.backing_buffer.capacity() - self.backing_buffer.len() < 1024 {
+            self.backing_buffer.reserve(4096);
+        }
         &mut self.backing_buffer
     }
 }
@@ -165,7 +172,7 @@ mod tests {
     #[rstest]
     fn get_right_sized_buffer() {
         let mut rotating_buffer = RotatingBuffer::new(128);
-        assert_eq!(rotating_buffer.current_buffer().capacity(), 128);
+        assert!(rotating_buffer.current_buffer().capacity() >= 128);
         assert_eq!(rotating_buffer.current_buffer().len(), 0);
     }
 
@@ -355,6 +362,38 @@ mod tests {
             &requests[0],
             RequestType::Get,
             101,
+            vec![key2.into()],
+            args_pointer,
+        );
+    }
+
+    #[rstest]
+    fn refill_buffer_after_consuming(#[values(false)] args_pointer: bool) {
+        // This test verifies that we can fill the buffer, consume it (via split_to),
+        // and then continue writing to it (requiring BytesMut to reclaim/reallocate).
+        const BUFFER_SIZE: usize = 128;
+        let mut rotating_buffer = RotatingBuffer::new(BUFFER_SIZE);
+
+        // Write enough data to fill/mostly fill the buffer
+        let key = generate_random_string(60);
+        write_get(rotating_buffer.current_buffer(), 1, &key, args_pointer);
+
+        let requests = rotating_buffer.get_requests::<CommandRequest>().unwrap();
+        assert_eq!(requests.len(), 1);
+
+        // At this point, the buffer should be logically empty (len=0),
+        // but the underlying storage might be at the end.
+        // writing again should trigger reserve/compact/alloc inside current_buffer/reserve
+
+        let key2 = generate_random_string(60);
+        write_get(rotating_buffer.current_buffer(), 2, &key2, args_pointer);
+
+        let requests2 = rotating_buffer.get_requests::<CommandRequest>().unwrap();
+        assert_eq!(requests2.len(), 1);
+        assert_request(
+            &requests2[0],
+            RequestType::Get,
+            2,
             vec![key2.into()],
             args_pointer,
         );
