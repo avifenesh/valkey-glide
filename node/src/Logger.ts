@@ -56,7 +56,11 @@ export class Logger {
         }
 
         if (err) {
-            message += `: ${err.stack}`;
+            message += `: ${err.message}`;
+
+            if (logLevel === "debug" || logLevel === "trace") {
+                message += `\nStack: ${err.stack}`;
+            }
         }
 
         const level = LEVEL.get(logLevel) || 0;
