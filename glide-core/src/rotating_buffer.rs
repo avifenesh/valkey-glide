@@ -20,37 +20,39 @@ impl RotatingBuffer {
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
-        let buffer = self.backing_buffer.split().freeze();
         let mut results: Vec<T> = vec![];
-        let mut prev_position = 0;
-        let buffer_len = buffer.len();
-        while prev_position < buffer_len {
-            if let Some((request_len, bytes_read)) = u32::decode_var(&buffer[prev_position..]) {
-                let start_pos = prev_position + bytes_read;
-                if (start_pos + request_len as usize) > buffer_len {
-                    break;
-                } else {
-                    match T::parse_from_tokio_bytes(
-                        &buffer.slice(start_pos..start_pos + request_len as usize),
-                    ) {
-                        Ok(request) => {
-                            prev_position += request_len as usize + bytes_read;
-                            results.push(request);
+        loop {
+            // Peek at the buffer to see if we have a full request
+            // decode_var returns Some((value, bytes_read)) if successful
+            match u32::decode_var(&self.backing_buffer[..]) {
+                Some((request_len, varint_len)) => {
+                    let total_len = varint_len + request_len as usize;
+                    if self.backing_buffer.len() >= total_len {
+                        // Extract the full message including length prefix
+                        // split_to is O(1) and leaves the remaining bytes in self.backing_buffer
+                        let message_buf = self.backing_buffer.split_to(total_len).freeze();
+
+                        // Parse the message body, skipping the length prefix
+                        let body = message_buf.slice(varint_len..);
+                        match T::parse_from_tokio_bytes(&body) {
+                            Ok(request) => {
+                                results.push(request);
+                            }
+                            Err(err) => {
+                                log_error("parse input", format!("Failed to parse request: {err}"));
+                                return Err(err.into());
+                            }
                         }
-                        Err(err) => {
-                            log_error("parse input", format!("Failed to parse request: {err}"));
-                            return Err(err.into());
-                        }
+                    } else {
+                        // We have the length, but not enough data for the body.
+                        break;
                     }
                 }
-            } else {
-                break;
+                None => {
+                    // Not enough data to decode the length prefix.
+                    break;
+                }
             }
-        }
-
-        if prev_position != buffer.len() {
-            self.backing_buffer
-                .extend_from_slice(&buffer[prev_position..]);
         }
         Ok(results)
     }
