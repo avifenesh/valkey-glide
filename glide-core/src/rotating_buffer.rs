@@ -20,7 +20,9 @@ impl RotatingBuffer {
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
-        // Pre-allocate vector to avoid immediate re-allocations for small batches.
+        // Optimization: Pre-allocate vector to avoid immediate re-allocations for small batches.
+        // A capacity of 4 strikes a balance between memory usage and handling common
+        // pipeline depths without reallocation.
         let mut results: Vec<T> = Vec::with_capacity(4);
         let buffer = self.backing_buffer.split().freeze();
         let mut prev_position = 0;
