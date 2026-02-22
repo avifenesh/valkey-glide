@@ -730,7 +730,8 @@ unsafe fn process_push_notification(
         let channel_slice = std::ptr::slice_from_raw_parts_mut(channel, channel_len as usize);
         let _ = Box::from_raw(channel_slice);
         if !pattern_ptr.is_null() {
-            let pattern_slice = std::ptr::slice_from_raw_parts_mut(pattern_ptr, pattern_len as usize);
+            let pattern_slice =
+                std::ptr::slice_from_raw_parts_mut(pattern_ptr, pattern_len as usize);
             let _ = Box::from_raw(pattern_slice);
         }
     }
