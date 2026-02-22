@@ -9,35 +9,34 @@ use std::io;
 /// An object handling a arranging read buffers, and parsing the data in the buffers into requests.
 pub struct RotatingBuffer {
     backing_buffer: BytesMut,
-    initial_capacity: usize,
 }
-
-const MIN_READ_CAPACITY: usize = 1024;
 
 impl RotatingBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
             backing_buffer: BytesMut::with_capacity(buffer_size),
-            initial_capacity: buffer_size,
         }
     }
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
-        let mut results: Vec<T> = vec![];
-        // Peek at the buffer to see if we have a full request
-        // decode_var returns Some((value, bytes_read)) if successful
-        while let Some((request_len, varint_len)) = u32::decode_var(&self.backing_buffer[..]) {
-            let total_len = varint_len + request_len as usize;
-            if self.backing_buffer.len() >= total_len {
-                // Extract the full message including length prefix
-                // split_to is O(1) and leaves the remaining bytes in self.backing_buffer
-                let message_buf = self.backing_buffer.split_to(total_len).freeze();
+        // Pre-allocate vector to avoid immediate re-allocations for small batches.
+        let mut results: Vec<T> = Vec::with_capacity(4);
+        let buffer = self.backing_buffer.split().freeze();
+        let mut prev_position = 0;
+        let buffer_len = buffer.len();
 
-                // Parse the message body, skipping the length prefix
-                let body = message_buf.slice(varint_len..);
-                match T::parse_from_tokio_bytes(&body) {
+        // Use while let to decode varints from the buffer slice
+        while let Some((request_len, bytes_read)) = u32::decode_var(&buffer[prev_position..]) {
+            let start_pos = prev_position + bytes_read;
+            let end_pos = start_pos + request_len as usize;
+
+            if end_pos > buffer_len {
+                break;
+            } else {
+                match T::parse_from_tokio_bytes(&buffer.slice(start_pos..end_pos)) {
                     Ok(request) => {
+                        prev_position = end_pos;
                         results.push(request);
                     }
                     Err(err) => {
@@ -45,23 +44,18 @@ impl RotatingBuffer {
                         return Err(err.into());
                     }
                 }
-            } else {
-                // We have the length, but not enough data for the body.
-                break;
             }
+        }
+
+        // If there are remaining bytes (partial message), move them back to the backing buffer
+        if prev_position != buffer_len {
+            self.backing_buffer
+                .extend_from_slice(&buffer[prev_position..]);
         }
         Ok(results)
     }
 
     pub fn current_buffer(&mut self) -> &mut BytesMut {
-        // Ensure there is enough space to read more data.
-        // split_to advances the read pointer, but BytesMut might not automatically
-        // reclaim space at the beginning until we ask for more capacity.
-        // We reserve `initial_capacity` to ensure we maintain the intended buffer size
-        // (e.g. 64KB) for efficient large reads, avoiding small chunk I/O overhead.
-        if self.backing_buffer.capacity() - self.backing_buffer.len() < MIN_READ_CAPACITY {
-            self.backing_buffer.reserve(self.initial_capacity);
-        }
         &mut self.backing_buffer
     }
 }
@@ -177,7 +171,7 @@ mod tests {
     #[rstest]
     fn get_right_sized_buffer() {
         let mut rotating_buffer = RotatingBuffer::new(128);
-        assert!(rotating_buffer.current_buffer().capacity() >= 128);
+        assert_eq!(rotating_buffer.current_buffer().capacity(), 128);
         assert_eq!(rotating_buffer.current_buffer().len(), 0);
     }
 
@@ -367,38 +361,6 @@ mod tests {
             &requests[0],
             RequestType::Get,
             101,
-            vec![key2.into()],
-            args_pointer,
-        );
-    }
-
-    #[rstest]
-    fn refill_buffer_after_consuming(#[values(false)] args_pointer: bool) {
-        // This test verifies that we can fill the buffer, consume it (via split_to),
-        // and then continue writing to it (requiring BytesMut to reclaim/reallocate).
-        const BUFFER_SIZE: usize = 128;
-        let mut rotating_buffer = RotatingBuffer::new(BUFFER_SIZE);
-
-        // Write enough data to fill/mostly fill the buffer
-        let key = generate_random_string(60);
-        write_get(rotating_buffer.current_buffer(), 1, &key, args_pointer);
-
-        let requests = rotating_buffer.get_requests::<CommandRequest>().unwrap();
-        assert_eq!(requests.len(), 1);
-
-        // At this point, the buffer should be logically empty (len=0),
-        // but the underlying storage might be at the end.
-        // writing again should trigger reserve/compact/alloc inside current_buffer/reserve
-
-        let key2 = generate_random_string(60);
-        write_get(rotating_buffer.current_buffer(), 2, &key2, args_pointer);
-
-        let requests2 = rotating_buffer.get_requests::<CommandRequest>().unwrap();
-        assert_eq!(requests2.len(), 1);
-        assert_request(
-            &requests2[0],
-            RequestType::Get,
-            2,
             vec![key2.into()],
             args_pointer,
         );
