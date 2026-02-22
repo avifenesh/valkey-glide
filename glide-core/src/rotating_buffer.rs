@@ -9,14 +9,14 @@ use std::io;
 /// An object handling a arranging read buffers, and parsing the data in the buffers into requests.
 pub struct RotatingBuffer {
     backing_buffer: BytesMut,
+    initial_capacity: usize,
 }
-
-const READ_RESERVE_SIZE: usize = 4096;
 
 impl RotatingBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
             backing_buffer: BytesMut::with_capacity(buffer_size),
+            initial_capacity: buffer_size,
         }
     }
 
@@ -55,9 +55,9 @@ impl RotatingBuffer {
         // Ensure there is enough space to read more data.
         // split_to advances the read pointer, but BytesMut might not automatically
         // reclaim space at the beginning until we ask for more capacity.
-        // We reserve a reasonable chunk to avoid small allocations/compactions.
-        if self.backing_buffer.capacity() - self.backing_buffer.len() < 1024 {
-            self.backing_buffer.reserve(READ_RESERVE_SIZE);
+        // We ensure we try to maintain the configured capacity.
+        if self.backing_buffer.capacity() - self.backing_buffer.len() < self.initial_capacity / 4 {
+            self.backing_buffer.reserve(self.initial_capacity);
         }
         &mut self.backing_buffer
     }
