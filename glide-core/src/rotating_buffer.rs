@@ -56,7 +56,7 @@ impl RotatingBuffer {
         // split_to advances the read pointer, but BytesMut might not automatically
         // reclaim space at the beginning until we ask for more capacity.
         // We ensure we try to maintain the configured capacity.
-        if self.backing_buffer.capacity() - self.backing_buffer.len() < self.initial_capacity / 4 {
+        if self.backing_buffer.capacity() - self.backing_buffer.len() < 1024 {
             self.backing_buffer.reserve(self.initial_capacity);
         }
         &mut self.backing_buffer
