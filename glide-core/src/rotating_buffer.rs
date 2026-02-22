@@ -20,6 +20,27 @@ impl RotatingBuffer {
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
+        if self.backing_buffer.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Optimization: Check if we have enough data for at least one full message
+        // before splitting the buffer. This avoids the O(N^2) copy behavior when
+        // messages arrive in small chunks.
+        let buffer_len = self.backing_buffer.len();
+        let should_process = if let Some((request_len, bytes_read)) =
+            u32::decode_var(&self.backing_buffer[..])
+        {
+            let full_msg_len = bytes_read + request_len as usize;
+            full_msg_len <= buffer_len
+        } else {
+            false
+        };
+
+        if !should_process {
+            return Ok(vec![]);
+        }
+
         let buffer = self.backing_buffer.split().freeze();
         let mut results: Vec<T> = vec![];
         let mut prev_position = 0;
