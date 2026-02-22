@@ -1,0 +1,4 @@
+## 2026-02-22 - Incorrect Vec Reconstruction in FFI
+**Vulnerability:** The FFI layer was converting `Vec<T>` to raw pointers using `vec.shrink_to_fit()` followed by `Vec::from_raw_parts(ptr, len, len)` for deallocation. `shrink_to_fit` is advisory and does not guarantee `capacity == len`. If the allocator leaves excess capacity, reconstructing the `Vec` with `capacity = len` provides incorrect layout information to the deallocator, leading to Undefined Behavior (heap corruption).
+**Learning:** Never assume `Vec::shrink_to_fit()` results in `capacity == len`. The allocator may have alignment or minimum size requirements that prevent exact shrinking.
+**Prevention:** Use `vec.into_boxed_slice()` to convert a `Vec` into a fixed-size allocation (`Box<[T]>`) before passing it to FFI. When freeing, reconstruct the `Box<[T]>` using `Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len))` to ensure the correct layout is used for deallocation.
