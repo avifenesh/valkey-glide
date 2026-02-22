@@ -12,6 +12,8 @@ pub struct RotatingBuffer {
     initial_capacity: usize,
 }
 
+const MIN_READ_CAPACITY: usize = 1024;
+
 impl RotatingBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
@@ -56,7 +58,7 @@ impl RotatingBuffer {
         // split_to advances the read pointer, but BytesMut might not automatically
         // reclaim space at the beginning until we ask for more capacity.
         // We ensure we try to maintain the configured capacity.
-        if self.backing_buffer.capacity() - self.backing_buffer.len() < 1024 {
+        if self.backing_buffer.capacity() - self.backing_buffer.len() < MIN_READ_CAPACITY {
             self.backing_buffer.reserve(self.initial_capacity);
         }
         &mut self.backing_buffer
