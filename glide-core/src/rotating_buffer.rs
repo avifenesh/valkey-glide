@@ -20,35 +20,37 @@ impl RotatingBuffer {
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
+        // Optimization: Pre-allocate vector to avoid immediate re-allocations for small batches.
+        // A capacity of 4 strikes a balance between memory usage and handling common
+        // pipeline depths without reallocation.
+        let mut results: Vec<T> = Vec::with_capacity(4);
         let buffer = self.backing_buffer.split().freeze();
-        let mut results: Vec<T> = vec![];
         let mut prev_position = 0;
         let buffer_len = buffer.len();
-        while prev_position < buffer_len {
-            if let Some((request_len, bytes_read)) = u32::decode_var(&buffer[prev_position..]) {
-                let start_pos = prev_position + bytes_read;
-                if (start_pos + request_len as usize) > buffer_len {
-                    break;
-                } else {
-                    match T::parse_from_tokio_bytes(
-                        &buffer.slice(start_pos..start_pos + request_len as usize),
-                    ) {
-                        Ok(request) => {
-                            prev_position += request_len as usize + bytes_read;
-                            results.push(request);
-                        }
-                        Err(err) => {
-                            log_error("parse input", format!("Failed to parse request: {err}"));
-                            return Err(err.into());
-                        }
+
+        // Use while let to decode varints from the buffer slice
+        while let Some((request_len, bytes_read)) = u32::decode_var(&buffer[prev_position..]) {
+            let start_pos = prev_position + bytes_read;
+            let end_pos = start_pos + request_len as usize;
+
+            if end_pos > buffer_len {
+                break;
+            } else {
+                match T::parse_from_tokio_bytes(&buffer.slice(start_pos..end_pos)) {
+                    Ok(request) => {
+                        prev_position = end_pos;
+                        results.push(request);
+                    }
+                    Err(err) => {
+                        log_error("parse input", format!("Failed to parse request: {err}"));
+                        return Err(err.into());
                     }
                 }
-            } else {
-                break;
             }
         }
 
-        if prev_position != buffer.len() {
+        // If there are remaining bytes (partial message), move them back to the backing buffer
+        if prev_position != buffer_len {
             self.backing_buffer
                 .extend_from_slice(&buffer[prev_position..]);
         }
