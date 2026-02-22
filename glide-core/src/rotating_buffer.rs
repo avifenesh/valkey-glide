@@ -57,7 +57,8 @@ impl RotatingBuffer {
         // Ensure there is enough space to read more data.
         // split_to advances the read pointer, but BytesMut might not automatically
         // reclaim space at the beginning until we ask for more capacity.
-        // We ensure we try to maintain the configured capacity.
+        // We reserve `initial_capacity` to ensure we maintain the intended buffer size
+        // (e.g. 64KB) for efficient large reads, avoiding small chunk I/O overhead.
         if self.backing_buffer.capacity() - self.backing_buffer.len() < MIN_READ_CAPACITY {
             self.backing_buffer.reserve(self.initial_capacity);
         }
