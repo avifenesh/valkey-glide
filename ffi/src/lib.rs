@@ -34,7 +34,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::{
     ffi::{CString, c_void},
-    mem,
     os::raw::{c_char, c_double, c_long, c_ulong},
 };
 use tokio::runtime::Builder;
@@ -726,10 +725,13 @@ unsafe fn process_push_notification(
             pattern_len,
         );
         // Free memory
-        let _ = Vec::from_raw_parts(message_ptr, message_len as usize, message_len as usize);
-        let _ = Vec::from_raw_parts(channel, channel_len as usize, channel_len as usize);
+        let message_slice = std::ptr::slice_from_raw_parts_mut(message_ptr, message_len as usize);
+        let _ = Box::from_raw(message_slice);
+        let channel_slice = std::ptr::slice_from_raw_parts_mut(channel, channel_len as usize);
+        let _ = Box::from_raw(channel_slice);
         if !pattern_ptr.is_null() {
-            let _ = Vec::from_raw_parts(pattern_ptr, pattern_len as usize, pattern_len as usize);
+            let pattern_slice = std::ptr::slice_from_raw_parts_mut(pattern_ptr, pattern_len as usize);
+            let _ = Box::from_raw(pattern_slice);
         }
     }
 }
@@ -959,12 +961,14 @@ unsafe fn free_command_response_elements(command_response: CommandResponse) {
     let sets_value_len = command_response.sets_value_len;
     if !string_value.is_null() {
         let len = string_value_len as usize;
-        unsafe { Vec::from_raw_parts(string_value, len, len) };
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(string_value, len);
+        unsafe { drop(Box::from_raw(slice_ptr)) };
     }
     if !array_value.is_null() {
         let len = array_value_len as usize;
-        let vec = unsafe { Vec::from_raw_parts(array_value, len, len) };
-        for element in vec.into_iter() {
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(array_value, len);
+        let boxed_slice = unsafe { Box::from_raw(slice_ptr) };
+        for element in boxed_slice.into_vec().into_iter() {
             unsafe { free_command_response_elements(element) };
         }
     }
@@ -976,8 +980,9 @@ unsafe fn free_command_response_elements(command_response: CommandResponse) {
     }
     if !sets_value.is_null() {
         let len = sets_value_len as usize;
-        let vec = unsafe { Vec::from_raw_parts(sets_value, len, len) };
-        for element in vec.into_iter() {
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(sets_value, len);
+        let boxed_slice = unsafe { Box::from_raw(slice_ptr) };
+        for element in boxed_slice.into_vec().into_iter() {
             unsafe { free_command_response_elements(element) };
         }
     }
@@ -1005,12 +1010,11 @@ unsafe fn convert_double_pointer_to_vec<'a>(
     result
 }
 
-fn convert_vec_to_pointer<T>(mut vec: Vec<T>) -> (*mut T, c_long) {
-    vec.shrink_to_fit();
-    let vec_ptr = vec.as_mut_ptr();
-    let len = vec.len() as c_long;
-    mem::forget(vec);
-    (vec_ptr, len)
+fn convert_vec_to_pointer<T>(vec: Vec<T>) -> (*mut T, c_long) {
+    let boxed_slice = vec.into_boxed_slice();
+    let len = boxed_slice.len() as c_long;
+    let ptr = Box::into_raw(boxed_slice) as *mut T;
+    (ptr, len)
 }
 
 fn valkey_value_to_command_response(value: Value) -> RedisResult<CommandResponse> {
