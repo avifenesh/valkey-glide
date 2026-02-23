@@ -68,6 +68,9 @@ pub unsafe extern "C" fn store_script(
     script_bytes: *const u8,
     script_len: usize,
 ) -> *mut ScriptHashBuffer {
+    if script_bytes.is_null() {
+        return std::ptr::null_mut();
+    }
     let script = unsafe { std::slice::from_raw_parts(script_bytes, script_len) };
     let hash = scripts_container::add_script(script);
     let mut hash = ManuallyDrop::new(hash);
@@ -821,7 +824,14 @@ pub unsafe extern "C-unwind" fn create_client(
     client_type: *const ClientType,
     pubsub_callback: PubSubCallback,
 ) -> *const ConnectionResponse {
-    assert!(!connection_request_bytes.is_null());
+    if connection_request_bytes.is_null() {
+        return Box::into_raw(Box::new(ConnectionResponse {
+            conn_ptr: std::ptr::null(),
+            connection_error_message: CString::into_raw(
+                CString::new("Connection request bytes pointer is null").unwrap(),
+            ),
+        }));
+    }
     let request_bytes =
         unsafe { std::slice::from_raw_parts(connection_request_bytes, connection_request_len) };
     let client_type = unsafe { &*client_type };
@@ -1182,6 +1192,12 @@ pub unsafe extern "C-unwind" fn command(
     route_bytes_len: usize,
     span_ptr: u64,
 ) -> *mut CommandResult {
+    if client_adapter_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_adapter_ptr);
@@ -1486,11 +1502,23 @@ pub unsafe extern "C-unwind" fn request_cluster_scan(
     args: *const usize,
     args_len: *const c_ulong,
 ) -> *mut CommandResult {
+    if client_adapter_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_adapter_ptr);
         Arc::from_raw(client_adapter_ptr as *mut ClientAdapter)
     };
+
+    if cursor.is_null() {
+        let err = RedisError::from((ErrorKind::ClientError, "Cursor pointer is null"));
+        return unsafe { client_adapter.handle_redis_error(err, request_id) };
+    }
+
     let cursor_id = unsafe { CStr::from_ptr(cursor) }
         .to_str()
         .unwrap_or("0")
@@ -1655,11 +1683,22 @@ pub unsafe extern "C-unwind" fn update_connection_password(
     password: *const c_char,
     immediate_auth: bool,
 ) -> *mut CommandResult {
+    if client_adapter_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_adapter_ptr);
         Arc::from_raw(client_adapter_ptr as *mut ClientAdapter)
     };
+
+    if password.is_null() {
+        let err = RedisError::from((ErrorKind::ClientError, "Password pointer is null"));
+        return unsafe { client_adapter.handle_redis_error(err, request_id) };
+    }
 
     // argument conversion to be used in the async block
     let password = match unsafe { CStr::from_ptr(password).to_str() } {
@@ -1709,6 +1748,12 @@ pub unsafe extern "C-unwind" fn refresh_iam_token(
     client_adapter_ptr: *const c_void,
     request_id: usize,
 ) -> *mut CommandResult {
+    if client_adapter_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_adapter_ptr);
@@ -1769,11 +1814,22 @@ pub unsafe extern "C-unwind" fn invoke_script(
     route_bytes: *const u8,
     route_bytes_len: usize,
 ) -> *mut CommandResult {
+    if client_adapter_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_adapter_ptr);
         Arc::from_raw(client_adapter_ptr as *mut ClientAdapter)
     };
+
+    if hash.is_null() {
+        let err = RedisError::from((ErrorKind::ClientError, "Script hash pointer is null"));
+        return unsafe { client_adapter.handle_redis_error(err, request_id) };
+    }
 
     // Convert hash to Rust string
     let hash_str = match unsafe { CStr::from_ptr(hash).to_str() } {
@@ -1918,11 +1974,29 @@ pub unsafe extern "C" fn batch(
     options_ptr: *const BatchOptionsInfo,
     span_ptr: u64,
 ) -> *mut CommandResult {
+    if client_ptr.is_null() {
+        return create_error_result_with_custom_error(
+            "Client adapter pointer is null".to_string(),
+            RequestErrorType::Unspecified,
+        );
+    }
     let client_adapter = unsafe {
         // we increment the strong count to ensure that the client is not dropped just because we turned it into an Arc.
         Arc::increment_strong_count(client_ptr);
         Arc::from_raw(client_ptr as *mut ClientAdapter)
     };
+
+    if batch_ptr.is_null() {
+        let err = "Batch info pointer is null".to_string();
+        return unsafe {
+            client_adapter.handle_custom_error(
+                err,
+                RequestErrorType::Unspecified,
+                callback_index,
+            )
+        };
+    }
+
     let mut client = client_adapter.core.client.clone();
 
     // Get compression manager for batch operations
