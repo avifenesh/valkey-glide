@@ -13,7 +13,7 @@ fn test_create_client_null() {
     let client_type = Box::into_raw(Box::new(ClientType::SyncClient));
     let res = unsafe { create_client(std::ptr::null(), 0, client_type, std::mem::transmute(0usize)) };
     assert!(!res.is_null());
-    let response = unsafe { &*res };
+    let response = unsafe { res.as_ref() }.expect("response is null");
     assert!(response.conn_ptr.is_null());
     assert!(!response.connection_error_message.is_null());
 
@@ -42,11 +42,11 @@ fn test_invoke_script_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
@@ -69,11 +69,11 @@ fn test_command_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
@@ -93,11 +93,11 @@ fn test_request_cluster_scan_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
@@ -115,11 +115,11 @@ fn test_update_connection_password_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
@@ -135,11 +135,11 @@ fn test_refresh_iam_token_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
@@ -159,11 +159,11 @@ fn test_batch_null_client() {
         )
     };
     assert!(!res.is_null());
-    let result = unsafe { &*res };
+    let result = unsafe { res.as_ref() }.expect("result is null");
     assert!(result.response.is_null());
     assert!(!result.command_error.is_null());
 
-    let error = unsafe { &*result.command_error };
+    let error = unsafe { result.command_error.as_ref() }.expect("command_error is null");
     let err_msg = unsafe { std::ffi::CStr::from_ptr(error.command_error_message).to_str().unwrap() };
     assert!(err_msg.contains("Client adapter pointer is null"));
 
