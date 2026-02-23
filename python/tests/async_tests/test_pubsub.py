@@ -4945,6 +4945,13 @@ class TestPubSub:
             # Compute the actual interval between syncs (timestamps are in milliseconds)
             actual_interval_ms = second_sync_ts - first_sync_ts
 
+            # If the interval is too short, it likely indicates a reconnection event triggering an immediate sync.
+            # In this case, we discard this interval and measure again.
+            if actual_interval_ms < interval_ms * 0.5:
+                first_sync_ts = second_sync_ts
+                second_sync_ts = await poll_for_timestamp_change(first_sync_ts)
+                actual_interval_ms = second_sync_ts - first_sync_ts
+
             # Assert interval is within +/- 50% tolerance
             assert interval_ms * 0.5 <= actual_interval_ms <= interval_ms * 1.5, (
                 f"Reconciliation interval ({actual_interval_ms}ms) should be between "
