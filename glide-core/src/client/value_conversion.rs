@@ -1193,11 +1193,11 @@ fn convert_array_elements(
     array: Vec<Value>,
     element_type: ExpectedReturnType,
 ) -> RedisResult<Value> {
-    let converted_array = array
+    let converted_array: RedisResult<Vec<Value>> = array
         .into_iter()
-        .map(|v| convert_to_expected_type(v, Some(element_type)).unwrap())
+        .map(|v| convert_to_expected_type(v, Some(element_type)))
         .collect();
-    Ok(Value::Array(converted_array))
+    Ok(Value::Array(converted_array?))
 }
 
 /// Converts an array of flat maps into an array of maps.
