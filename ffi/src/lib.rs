@@ -1989,11 +1989,7 @@ pub unsafe extern "C" fn batch(
     if batch_ptr.is_null() {
         let err = "Batch info pointer is null".to_string();
         return unsafe {
-            client_adapter.handle_custom_error(
-                err,
-                RequestErrorType::Unspecified,
-                callback_index,
-            )
+            client_adapter.handle_custom_error(err, RequestErrorType::Unspecified, callback_index)
         };
     }
 
