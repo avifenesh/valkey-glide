@@ -1194,8 +1194,8 @@ fn convert_array_elements(
     element_type: ExpectedReturnType,
 ) -> RedisResult<Value> {
     let converted_array = array
-        .iter()
-        .map(|v| convert_to_expected_type(v.clone(), Some(element_type)).unwrap())
+        .into_iter()
+        .map(|v| convert_to_expected_type(v, Some(element_type)).unwrap())
         .collect();
     Ok(Value::Array(converted_array))
 }
@@ -1383,9 +1383,10 @@ fn convert_flat_array_to_array_of_pairs(
     }
 
     let mut result = Vec::with_capacity(array.len() / 2);
-    for i in (0..array.len()).step_by(2) {
-        let key = array[i].clone();
-        let value = convert_to_expected_type(array[i + 1].clone(), value_expected_return_type)?;
+    let mut iter = array.into_iter();
+    while let Some(key) = iter.next() {
+        let val = iter.next().unwrap();
+        let value = convert_to_expected_type(val, value_expected_return_type)?;
         let pair = vec![key, value];
         result.push(Value::Array(pair));
     }
