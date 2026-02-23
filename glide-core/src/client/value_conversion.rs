@@ -1193,6 +1193,7 @@ fn convert_array_elements(
     array: Vec<Value>,
     element_type: ExpectedReturnType,
 ) -> RedisResult<Value> {
+    // Optimization: Use `into_iter` to consume the input array and avoid deep cloning of elements.
     let converted_array: RedisResult<Vec<Value>> = array
         .into_iter()
         .map(|v| convert_to_expected_type(v, Some(element_type)))
@@ -1382,6 +1383,7 @@ fn convert_flat_array_to_array_of_pairs(
             .into());
     }
 
+    // Optimization: Use `into_iter` to consume the input array and avoid deep cloning of keys and values.
     let mut result = Vec::with_capacity(array.len() / 2);
     let mut iter = array.into_iter();
     while let Some(key) = iter.next() {

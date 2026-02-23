@@ -60,6 +60,23 @@ static SHARED_TLS_SERVER_ADDRESS: Lazy<ConnectionAddr> = Lazy::new(|| {
         .get_client_addr()
 });
 
+static SERVER_EXECUTABLE: Lazy<String> = Lazy::new(|| {
+    // Check if valkey-server is available
+    if process::Command::new("valkey-server")
+        .arg("--version")
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        "valkey-server".to_string()
+    } else {
+        // Fallback to redis-server
+        "redis-server".to_string()
+    }
+});
+
 pub fn get_shared_server_address(use_tls: bool) -> ConnectionAddr {
     if use_tls {
         SHARED_TLS_SERVER_ADDRESS.clone()
@@ -152,7 +169,7 @@ impl RedisServer {
         tls_auth_clients: bool,
         spawner: F,
     ) -> RedisServer {
-        let mut redis_cmd = process::Command::new("redis-server");
+        let mut redis_cmd = process::Command::new(SERVER_EXECUTABLE.as_str());
 
         for module in modules {
             match module {
