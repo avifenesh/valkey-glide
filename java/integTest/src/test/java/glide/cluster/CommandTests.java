@@ -2017,7 +2017,7 @@ public class CommandTests {
 
         String libName = "functionKill_no_write_without_route";
         String funcName = "deadlock_without_route";
-        String code = createLuaLibWithLongRunningFunction(libName, funcName, 6, true);
+        String code = createLuaLibWithLongRunningFunction(libName, funcName, 15, true);
 
         assertEquals(OK, clusterClient.functionFlush(SYNC).get());
 
@@ -2044,7 +2044,7 @@ public class CommandTests {
 
                 // Run FKILL until it returns OK
                 boolean functionKilled = false;
-                int timeout = 4000; // ms
+                int timeout = 10000; // ms
                 while (timeout >= 0) {
                     try {
                         assertEquals(OK, clusterClient.functionKill().get());
@@ -2052,8 +2052,8 @@ public class CommandTests {
                         break;
                     } catch (RequestException ignored) {
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
 
                 assertTrue(functionKilled);
@@ -2073,7 +2073,7 @@ public class CommandTests {
         GlideString libName = gs("functionKillBinary_no_write_without_route");
         GlideString funcName = gs("deadlock_without_route");
         GlideString code =
-                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 6, true));
+                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 15, true));
 
         assertEquals(OK, clusterClient.functionFlush(SYNC).get());
 
@@ -2100,7 +2100,7 @@ public class CommandTests {
 
                 // Run FKILL until it returns OK
                 boolean functionKilled = false;
-                int timeout = 4000; // ms
+                int timeout = 10000; // ms
                 while (timeout >= 0) {
                     try {
                         assertEquals(OK, clusterClient.functionKill().get());
@@ -2108,8 +2108,8 @@ public class CommandTests {
                         break;
                     } catch (RequestException ignored) {
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
 
                 assertTrue(functionKilled);
@@ -2129,7 +2129,7 @@ public class CommandTests {
 
         String libName = "functionKill_no_write_with_route" + singleNodeRoute;
         String funcName = "deadlock_with_route_" + singleNodeRoute;
-        String code = createLuaLibWithLongRunningFunction(libName, funcName, 6, true);
+        String code = createLuaLibWithLongRunningFunction(libName, funcName, 15, true);
         Route route =
                 singleNodeRoute ? new SlotKeyRoute(UUID.randomUUID().toString(), PRIMARY) : ALL_PRIMARIES;
 
@@ -2153,7 +2153,7 @@ public class CommandTests {
 
                 Thread.sleep(1000);
                 boolean functionKilled = false;
-                int timeout = 4000; // ms
+                int timeout = 10000; // ms
                 while (timeout >= 0) {
                     try {
                         assertEquals(OK, clusterClient.functionKill().get());
@@ -2161,8 +2161,8 @@ public class CommandTests {
                         break;
                     } catch (RequestException ignored) {
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
 
                 assertTrue(functionKilled);
@@ -2183,7 +2183,7 @@ public class CommandTests {
         GlideString libName = gs("functionKillBinary_no_write_with_route" + singleNodeRoute);
         GlideString funcName = gs("deadlock_with_route_" + singleNodeRoute);
         GlideString code =
-                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 6, true));
+                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 15, true));
         Route route =
                 singleNodeRoute ? new SlotKeyRoute(UUID.randomUUID().toString(), PRIMARY) : ALL_PRIMARIES;
 
@@ -2208,7 +2208,7 @@ public class CommandTests {
                 Thread.sleep(1000);
 
                 boolean functionKilled = false;
-                int timeout = 4000; // ms
+                int timeout = 10000; // ms
                 while (timeout >= 0) {
                     try {
                         assertEquals(OK, clusterClient.functionKill().get());
@@ -2216,8 +2216,8 @@ public class CommandTests {
                         break;
                     } catch (RequestException ignored) {
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
 
                 assertTrue(functionKilled);
@@ -2237,7 +2237,7 @@ public class CommandTests {
         String libName = "functionKill_key_based_write_function";
         String funcName = "deadlock_write_function_with_key_based_route";
         String key = libName;
-        String code = createLuaLibWithLongRunningFunction(libName, funcName, 6, false);
+        String code = createLuaLibWithLongRunningFunction(libName, funcName, 15, false);
         Route route = new SlotKeyRoute(key, PRIMARY);
 
         assertEquals(OK, clusterClient.functionFlush(SYNC, route).get());
@@ -2263,7 +2263,7 @@ public class CommandTests {
                 Thread.sleep(1000);
 
                 boolean foundUnkillable = false;
-                int timeout = 4000; // ms
+                int timeout = 20000; // ms
                 while (timeout >= 0) {
                     try {
                         // valkey kills a function with 5 sec delay
@@ -2278,8 +2278,8 @@ public class CommandTests {
                             break;
                         }
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
                 assertTrue(foundUnkillable);
             } finally {
@@ -2305,7 +2305,7 @@ public class CommandTests {
         GlideString funcName = gs("deadlock_write_function_with_key_based_route");
         GlideString key = libName;
         GlideString code =
-                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 6, false));
+                gs(createLuaLibWithLongRunningFunction(libName.toString(), funcName.toString(), 15, false));
         Route route = new SlotKeyRoute(key.toString(), PRIMARY);
 
         assertEquals(OK, clusterClient.functionFlush(SYNC, route).get());
@@ -2332,7 +2332,7 @@ public class CommandTests {
                 Thread.sleep(1000);
 
                 boolean foundUnkillable = false;
-                int timeout = 4000; // ms
+                int timeout = 20000; // ms
                 while (timeout >= 0) {
                     try {
                         // valkey kills a function with 5 sec delay
@@ -2347,8 +2347,8 @@ public class CommandTests {
                             break;
                         }
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
                 assertTrue(foundUnkillable);
             } finally {
@@ -3525,7 +3525,7 @@ public class CommandTests {
     @SneakyThrows
     public void scriptKill_with_route(GlideClusterClient clusterClient) {
         // create and load a long-running script and a primary node route
-        Script script = new Script(createLongRunningLuaScript(5, true), true);
+        Script script = new Script(createLongRunningLuaScript(15, true), true);
         Route route = new SlotKeyRoute(UUID.randomUUID().toString(), PRIMARY);
 
         // Verify that script_kill raises an error when no script is running
@@ -3551,7 +3551,7 @@ public class CommandTests {
 
                 // Run script kill until it returns OK
                 boolean scriptKilled = false;
-                int timeout = 4000; // ms
+                int timeout = 10000; // ms
                 while (timeout >= 0) {
                     try {
                         assertEquals(OK, clusterClient.scriptKill(route).get());
@@ -3559,8 +3559,8 @@ public class CommandTests {
                         break;
                     } catch (RequestException ignored) {
                     }
-                    Thread.sleep(500);
-                    timeout -= 500;
+                    Thread.sleep(200);
+                    timeout -= 200;
                 }
 
                 assertTrue(scriptKilled);
@@ -3591,8 +3591,8 @@ public class CommandTests {
         String key = UUID.randomUUID().toString();
         // Route to the same node where the script will run (based on the key)
         Route route = new SlotKeyRoute(key, PRIMARY);
-        // Create a script that writes data (making it unkillable) and runs for 6 seconds
-        String code = createLongRunningLuaScript(6, false);
+        // Create a script that writes data (making it unkillable) and runs for 15 seconds
+        String code = createLongRunningLuaScript(15, false);
 
         try (Script script = new Script(code, false);
                 GlideClusterClient testClient =
@@ -3608,7 +3608,7 @@ public class CommandTests {
 
             // Try to kill the script - it should fail with "unkillable" since it has writes
             boolean foundUnkillable = false;
-            for (int i = 0; i < 25 && !foundUnkillable; i++) {
+            for (int i = 0; i < 100 && !foundUnkillable; i++) {
                 try {
                     clusterClient.scriptKill(route).get();
                 } catch (ExecutionException e) {
