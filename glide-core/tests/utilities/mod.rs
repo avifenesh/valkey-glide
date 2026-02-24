@@ -775,7 +775,12 @@ fn init() {
 
 pub async fn kill_connection(client: &mut impl glide_core::client::GlideClientForTests) {
     let mut client_kill_cmd = redis::cmd("CLIENT");
-    client_kill_cmd.arg("KILL").arg("SKIPME").arg("NO");
+    client_kill_cmd
+        .arg("KILL")
+        .arg("TYPE")
+        .arg("normal")
+        .arg("SKIPME")
+        .arg("NO");
 
     let _ = client
         .send_command(
@@ -794,7 +799,12 @@ pub async fn kill_connection_for_route(
     route: RoutingInfo,
 ) {
     let mut client_kill_cmd = redis::cmd("CLIENT");
-    client_kill_cmd.arg("KILL").arg("SKIPME").arg("NO");
+    client_kill_cmd
+        .arg("KILL")
+        .arg("TYPE")
+        .arg("normal")
+        .arg("SKIPME")
+        .arg("NO");
 
     let _ = client
         .send_command(&mut client_kill_cmd, Some(route))
