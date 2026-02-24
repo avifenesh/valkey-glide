@@ -32,6 +32,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::ptr::from_mut;
 use std::rc::Rc;
 use std::str;
@@ -832,6 +833,9 @@ fn get_unsafe_span_from_ptr(command_span: Option<u64>) -> Option<GlideSpan> {
 pub fn close_socket(socket_path: &String) {
     log_info("close_socket", format!("closing socket at {socket_path}"));
     let _ = std::fs::remove_file(socket_path);
+    if let Some(parent) = Path::new(socket_path).parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
 }
 
 async fn create_client(
@@ -1069,7 +1073,7 @@ pub fn get_socket_path() -> String {
     // to the socket name. The UUID is used to ensure that the socket name is unique for situations in which PID can be resused such as with dockers.
     static SOCKET_NAME: Lazy<String> = Lazy::new(|| {
         format!(
-            "{}-{}-{}.sock",
+            "{}-{}-{}/socket",
             SOCKET_FILE_NAME,
             std::process::id(),
             Uuid::new_v4(),
@@ -1122,6 +1126,27 @@ pub fn start_socket_listener_internal<InitCallback>(
     };
 
     glide_rt.runtime.spawn(async move {
+        // Create parent directory if it doesn't exist, with restricted permissions
+        if let Some(parent) = Path::new(&socket_path_cloned).parent() {
+            if !parent.exists() {
+                if let Err(err) = fs::create_dir_all(parent) {
+                    log_error(
+                        "listen_on_socket",
+                        format!("Failed to create socket directory: {err}"),
+                    );
+                    let _ = tx.send(Err(err));
+                    return;
+                }
+                // Set permissions to 700
+                if let Err(err) = fs::set_permissions(parent, fs::Permissions::from_mode(0o700)) {
+                    log_error(
+                        "listen_on_socket",
+                        format!("Failed to set permissions for socket directory: {err}"),
+                    );
+                }
+            }
+        }
+
         let listener_socket = match UnixListener::bind(socket_path_cloned.clone()) {
             Err(err) => {
                 log_error(
@@ -1177,6 +1202,9 @@ pub fn start_socket_listener_internal<InitCallback>(
         // ensure socket file removal
         drop(listener_socket);
         let _ = std::fs::remove_file(socket_path_cloned.clone());
+        if let Some(parent) = Path::new(&socket_path_cloned).parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
 
         // no more listening on socket - update the sockets db
         let mut sockets_write_guard = INITIALIZED_SOCKETS

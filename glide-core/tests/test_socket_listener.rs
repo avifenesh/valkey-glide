@@ -1417,4 +1417,41 @@ mod socket_listener {
             ResponseType::RequestError,
         );
     }
+
+    #[rstest]
+    #[serial_test::serial]
+    #[timeout(SHORT_STANDALONE_TEST_TIMEOUT)]
+    fn test_socket_directory_permissions() {
+        let socket_listener_state: Arc<ManualResetEvent> =
+            Arc::new(ManualResetEvent::new(EventState::Unset));
+        let cloned_state = socket_listener_state.clone();
+        let path_arc = Arc::new(std::sync::Mutex::new(None));
+        let path_arc_clone = Arc::clone(&path_arc);
+
+        socket_listener::start_socket_listener(
+            move |res| {
+                let path: String = res.expect("Failed to initialize the socket listener");
+                let mut path_arc_clone = path_arc_clone.lock().unwrap();
+                *path_arc_clone = Some(path);
+                cloned_state.set();
+            }
+        );
+        socket_listener_state.wait();
+        let path_binding = path_arc.lock().unwrap();
+        let path_str = path_binding.as_ref().expect("Didn't get any socket path");
+        let path = std::path::Path::new(path_str);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(parent) = path.parent() {
+                let metadata = std::fs::metadata(parent).expect("Failed to get metadata");
+                let permissions = metadata.permissions();
+                let mode = permissions.mode();
+                // Check if mode is 700 (rwx------)
+                assert_eq!(mode & 0o777, 0o700, "Directory permissions should be 0700");
+            }
+        }
+        socket_listener::close_socket(path_str);
+    }
 }
