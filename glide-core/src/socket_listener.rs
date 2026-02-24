@@ -1127,23 +1127,24 @@ pub fn start_socket_listener_internal<InitCallback>(
 
     glide_rt.runtime.spawn(async move {
         // Create parent directory if it doesn't exist, with restricted permissions
-        if let Some(parent) = Path::new(&socket_path_cloned).parent() {
-            if !parent.exists() {
-                if let Err(err) = fs::create_dir_all(parent) {
-                    log_error(
-                        "listen_on_socket",
-                        format!("Failed to create socket directory: {err}"),
-                    );
-                    let _ = tx.send(Err(err));
-                    return;
-                }
-                // Set permissions to 700
-                if let Err(err) = fs::set_permissions(parent, fs::Permissions::from_mode(0o700)) {
-                    log_error(
-                        "listen_on_socket",
-                        format!("Failed to set permissions for socket directory: {err}"),
-                    );
-                }
+        if let Some(parent) = Path::new(&socket_path_cloned)
+            .parent()
+            .filter(|p| !p.exists())
+        {
+            if let Err(err) = fs::create_dir_all(parent) {
+                log_error(
+                    "listen_on_socket",
+                    format!("Failed to create socket directory: {err}"),
+                );
+                let _ = tx.send(Err(err));
+                return;
+            }
+            // Set permissions to 700
+            if let Err(err) = fs::set_permissions(parent, fs::Permissions::from_mode(0o700)) {
+                log_error(
+                    "listen_on_socket",
+                    format!("Failed to set permissions for socket directory: {err}"),
+                );
             }
         }
 
