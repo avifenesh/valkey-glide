@@ -4946,10 +4946,16 @@ class TestPubSub:
             actual_interval_ms = second_sync_ts - first_sync_ts
 
             # If the interval is too short, it likely indicates a reconnection event triggering an immediate sync.
-            # In this case, we discard this interval and measure again, up to 5 times.
+            # In this case, we discard this interval and measure again, up to 10 times.
             attempts = 0
-            while actual_interval_ms < interval_ms * 0.5 and attempts < 5:
-                first_sync_ts = second_sync_ts
+            while actual_interval_ms < interval_ms * 0.5 and attempts < 10:
+                # Sleep briefly to let connection stabilize if we are in a reconnect storm
+                await anyio.sleep(1)
+
+                # Reset baseline
+                stats = await listening_client.get_statistics()
+                first_sync_ts = int(stats.get("subscription_last_sync_timestamp", "0"))
+
                 second_sync_ts = await poll_for_timestamp_change(first_sync_ts)
                 actual_interval_ms = second_sync_ts - first_sync_ts
                 attempts += 1
