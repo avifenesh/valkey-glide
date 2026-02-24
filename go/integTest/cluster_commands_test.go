@@ -2635,7 +2635,6 @@ func (suite *GlideTestSuite) TestScriptKillWithRoute() {
 	go invokeClient.InvokeScriptWithRoute(context.Background(), *script, route)
 
 	var result string
-	var err error
 	// Retry killing the script until it starts running or timeout
 	for i := 0; i < 10; i++ {
 		time.Sleep(500 * time.Millisecond)
