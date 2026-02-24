@@ -1431,10 +1431,7 @@ mod socket_listener {
         // Use a unique socket name to avoid interfering with other tests that use the shared socket.
         // The unique name must contain a slash to trigger the directory creation logic in `start_socket_listener_internal`.
         // `get_socket_path_from_name` will prepend the base directory (e.g. /tmp), so we just need a unique subdir/socket structure.
-        let unique_socket_name = format!(
-            "test-perms-{}/socket",
-            uuid::Uuid::new_v4()
-        );
+        let unique_socket_name = format!("test-perms-{}/socket", uuid::Uuid::new_v4());
         let socket_path = socket_listener::get_socket_path_from_name(unique_socket_name);
 
         socket_listener::start_socket_listener_internal(
