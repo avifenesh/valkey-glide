@@ -2531,7 +2531,7 @@ pub(crate) mod shared_client_tests {
             kill_connection(&mut test_basics.client).await;
 
             // Wait a moment for the connection to be fully dropped and processed by the server/client
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
             // Try to send another command - this should trigger reconnection
             let res = test_basics
@@ -2668,7 +2668,7 @@ pub(crate) mod shared_client_tests {
             kill_connection(&mut test_basics.client).await;
 
             // Wait a moment for the connection to be fully dropped and processed by the server/client
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
             // Try to send another command - this should trigger reconnection
             let res = test_basics
@@ -2828,7 +2828,7 @@ pub(crate) mod shared_client_tests {
             kill_connection(&mut test_basics.client).await;
 
             // Wait a moment for the connection to be fully dropped
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
             // Try to send another command - this should trigger reconnection
             let res = test_basics
@@ -2974,7 +2974,7 @@ pub(crate) mod shared_client_tests {
             kill_connection(&mut test_basics.client).await;
 
             // Wait a moment for the connection to be fully dropped and processed by the server/client
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
             // Try to send another command - this should trigger reconnection
             let res = test_basics.client.send_command(&mut hello_cmd, None).await;

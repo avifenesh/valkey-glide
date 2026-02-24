@@ -2634,9 +2634,21 @@ func (suite *GlideTestSuite) TestScriptKillWithRoute() {
 
 	go invokeClient.InvokeScriptWithRoute(context.Background(), *script, route)
 
-	time.Sleep(1 * time.Second)
+	var result string
+	var err error
+	// Retry killing the script until it starts running or timeout
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		result, err = killClient.ScriptKillWithRoute(context.Background(), route)
+		if err == nil {
+			break
+		}
+		// If the script hasn't started yet, we get a "NOTBUSY" error. We should retry in this case.
+		if !strings.Contains(strings.ToLower(err.Error()), "notbusy") {
+			break
+		}
+	}
 
-	result, err := killClient.ScriptKillWithRoute(context.Background(), route)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "OK", result)
 	script.Close()
