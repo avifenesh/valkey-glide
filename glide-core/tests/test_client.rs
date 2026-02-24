@@ -1878,6 +1878,9 @@ pub(crate) mod shared_client_tests {
             )
             .await;
 
+            // Wait a moment for the connection to be fully dropped and processed by the server/client
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
             let res = test_basics
                 .client
                 .send_pipeline(
@@ -2029,6 +2032,9 @@ pub(crate) mod shared_client_tests {
 
             // Kill all connections.
             kill_connection(&mut test_basics.client).await;
+
+            // Wait a moment for the connection to be fully dropped and processed by the server/client
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
             let res = test_basics
                 .client
