@@ -1428,13 +1428,23 @@ mod socket_listener {
         let path_arc = Arc::new(std::sync::Mutex::new(None));
         let path_arc_clone = Arc::clone(&path_arc);
 
-        socket_listener::start_socket_listener(
+        // Use a unique socket name to avoid interfering with other tests that use the shared socket.
+        // The unique name must contain a slash to trigger the directory creation logic in `start_socket_listener_internal`.
+        // `get_socket_path_from_name` will prepend the base directory (e.g. /tmp), so we just need a unique subdir/socket structure.
+        let unique_socket_name = format!(
+            "test-perms-{}/socket",
+            uuid::Uuid::new_v4()
+        );
+        let socket_path = socket_listener::get_socket_path_from_name(unique_socket_name);
+
+        socket_listener::start_socket_listener_internal(
             move |res| {
                 let path: String = res.expect("Failed to initialize the socket listener");
                 let mut path_arc_clone = path_arc_clone.lock().unwrap();
                 *path_arc_clone = Some(path);
                 cloned_state.set();
-            }
+            },
+            Some(socket_path),
         );
         socket_listener_state.wait();
         let path_binding = path_arc.lock().unwrap();
