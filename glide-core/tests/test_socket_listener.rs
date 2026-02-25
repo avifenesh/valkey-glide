@@ -525,7 +525,8 @@ mod socket_listener {
         let path_arc = Arc::new(std::sync::Mutex::new(None));
         let path_arc_clone = Arc::clone(&path_arc);
 
-        let unique_name = format!("socket-permissions-test-{}", generate_random_string(10));
+        // Ensure the directory name starts with "glide-socket" so close_socket cleans it up
+        let unique_name = format!("glide-socket-permissions-test-{}", generate_random_string(10));
         let unique_path = get_socket_path_from_name(unique_name);
 
         socket_listener::start_socket_listener_internal(
@@ -567,8 +568,9 @@ mod socket_listener {
     #[rstest]
     #[timeout(SHORT_STANDALONE_TEST_TIMEOUT)]
     fn test_working_after_socket_listener_was_dropped() {
+        // Ensure the directory name starts with "glide-socket" so close_socket cleans it up
         let socket_path = get_socket_path_from_name(format!(
-            "{}_test_working_after_socket_listener_was_dropped",
+            "glide-socket-{}_test_working_after_socket_listener_was_dropped",
             std::process::id()
         ));
         close_socket(&socket_path);
