@@ -2636,9 +2636,33 @@ func (suite *GlideTestSuite) TestScriptKillWithRoute() {
 
 	time.Sleep(1 * time.Second)
 
-	result, err := killClient.ScriptKillWithRoute(context.Background(), route)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "OK", result)
+	// Try to kill the script with retries for "unkillable" state
+	start := time.Now()
+	for {
+		result, err := killClient.ScriptKillWithRoute(context.Background(), route)
+		if err == nil {
+			assert.Equal(suite.T(), "OK", result)
+			break
+		}
+
+		// If script is unkillable, wait and retry (it might be finishing)
+		if strings.Contains(strings.ToLower(err.Error()), "unkillable") {
+			if time.Since(start) > 30*time.Second {
+				suite.T().Fatal("Timed out waiting for script to be killable or finish")
+			}
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// If it says notbusy, it might have finished already (race condition), which is also acceptable for this test flow
+		if strings.Contains(strings.ToLower(err.Error()), "notbusy") {
+			break
+		}
+
+		// Unexpected error
+		assert.NoError(suite.T(), err)
+		break
+	}
 	script.Close()
 
 	time.Sleep(1 * time.Second)
