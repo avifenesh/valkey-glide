@@ -526,7 +526,10 @@ mod socket_listener {
         let path_arc_clone = Arc::clone(&path_arc);
 
         // Ensure the directory name starts with "glide-socket" so close_socket cleans it up
-        let unique_name = format!("glide-socket-permissions-test-{}", generate_random_string(10));
+        let unique_name = format!(
+            "glide-socket-permissions-test-{}",
+            generate_random_string(10)
+        );
         let unique_path = get_socket_path_from_name(unique_name);
 
         socket_listener::start_socket_listener_internal(
