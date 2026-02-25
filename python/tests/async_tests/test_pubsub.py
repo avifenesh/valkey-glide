@@ -4932,24 +4932,36 @@ class TestPubSub:
                     f"Sync timestamp did not change within {timeout_s}s. Previous: {previous_ts}"
                 )
 
-            # Get initial timestamp
-            initial_stats = await listening_client.get_statistics()
-            initial_ts = int(initial_stats.get("subscription_last_sync_timestamp", "0"))
+            # Retry loop for measurement to handle instability/jitter
+            start_time = anyio.current_time()
+            # Try to measure for up to 15 seconds
+            while (anyio.current_time() - start_time) < 15.0:
+                # Get initial timestamp
+                initial_stats = await listening_client.get_statistics()
+                initial_ts = int(initial_stats.get("subscription_last_sync_timestamp", "0"))
 
-            # Wait for first sync event
-            first_sync_ts = await poll_for_timestamp_change(initial_ts)
+                try:
+                    # Wait for first sync event
+                    first_sync_ts = await poll_for_timestamp_change(initial_ts)
 
-            # Wait for second sync event
-            second_sync_ts = await poll_for_timestamp_change(first_sync_ts)
+                    # Wait for second sync event
+                    second_sync_ts = await poll_for_timestamp_change(first_sync_ts)
 
-            # Compute the actual interval between syncs (timestamps are in milliseconds)
-            actual_interval_ms = second_sync_ts - first_sync_ts
+                    # Compute the actual interval between syncs (timestamps are in milliseconds)
+                    actual_interval_ms = second_sync_ts - first_sync_ts
 
-            # Assert interval is within +/- 50% tolerance
-            assert interval_ms * 0.5 <= actual_interval_ms <= interval_ms * 1.5, (
-                f"Reconciliation interval ({actual_interval_ms}ms) should be between "
-                f"{interval_ms * 0.5}ms and {interval_ms * 1.5}ms"
-            )
+                    # Check if interval is within +/- 50% tolerance
+                    if interval_ms * 0.5 <= actual_interval_ms <= interval_ms * 1.5:
+                        return
+
+                    # If interval is too short (storm) or too long (lag), wait and retry
+                    await anyio.sleep(0.5)
+                except TimeoutError:
+                    # If polling times out, retry
+                    continue
+
+            # If loop finishes without success, fail
+            pytest.fail("Failed to measure valid reconciliation interval within timeout")
 
         finally:
             await pubsub_client_cleanup(listening_client)

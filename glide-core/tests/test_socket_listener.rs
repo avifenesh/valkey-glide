@@ -19,6 +19,7 @@ const REQUEST_TIMEOUT_MS: u32 = 1000;
 #[cfg(test)]
 mod socket_listener {
     use crate::utilities::mocks::{Mock, ServerMock};
+    use uuid::Uuid;
 
     use super::*;
     use command_request::{CommandRequest, RequestType};
@@ -405,6 +406,13 @@ mod socket_listener {
         let cloned_state = socket_listener_state.clone();
         let path_arc = Arc::new(std::sync::Mutex::new(None));
         let path_arc_clone = Arc::clone(&path_arc);
+        let socket_path = socket_path.or_else(|| {
+            Some(get_socket_path_from_name(format!(
+                "glide-socket-test-{}",
+                Uuid::new_v4()
+            )))
+        });
+
         socket_listener::start_socket_listener_internal(
             move |res| {
                 let path: String = res.expect("Failed to initialize the socket listener");
