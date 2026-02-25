@@ -4938,7 +4938,9 @@ class TestPubSub:
             while (anyio.current_time() - start_time) < 15.0:
                 # Get initial timestamp
                 initial_stats = await listening_client.get_statistics()
-                initial_ts = int(initial_stats.get("subscription_last_sync_timestamp", "0"))
+                initial_ts = int(
+                    initial_stats.get("subscription_last_sync_timestamp", "0")
+                )
 
                 try:
                     # Wait for first sync event
@@ -4961,7 +4963,9 @@ class TestPubSub:
                     continue
 
             # If loop finishes without success, fail
-            pytest.fail("Failed to measure valid reconciliation interval within timeout")
+            pytest.fail(
+                "Failed to measure valid reconciliation interval within timeout"
+            )
 
         finally:
             await pubsub_client_cleanup(listening_client)
