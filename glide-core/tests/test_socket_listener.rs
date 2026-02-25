@@ -518,6 +518,51 @@ mod socket_listener {
 
     #[rstest]
     #[timeout(SHORT_STANDALONE_TEST_TIMEOUT)]
+    fn test_socket_directory_permissions() {
+        let socket_listener_state: Arc<ManualResetEvent> =
+            Arc::new(ManualResetEvent::new(EventState::Unset));
+        let cloned_state = socket_listener_state.clone();
+        let path_arc = Arc::new(std::sync::Mutex::new(None));
+        let path_arc_clone = Arc::clone(&path_arc);
+
+        socket_listener::start_socket_listener_internal(
+            move |res| {
+                let path: String = res.expect("Failed to initialize the socket listener");
+                let mut path_arc_clone = path_arc_clone.lock().unwrap();
+                *path_arc_clone = Some(path);
+                cloned_state.set();
+            },
+            None,
+        );
+        socket_listener_state.wait();
+
+        let path_str = path_arc
+            .lock()
+            .unwrap()
+            .take()
+            .expect("Didn't get any socket path");
+        let path = std::path::Path::new(&path_str);
+
+        // Check that the parent directory has the correct permissions
+        let parent = path.parent().unwrap();
+
+        // Verify it is a directory
+        assert!(parent.is_dir());
+
+        // Verify permissions are 700
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(parent).unwrap();
+        let permissions = metadata.permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o700);
+
+        // Verify the socket file exists
+        assert!(path.exists());
+
+        close_socket(&path_str);
+    }
+
+    #[rstest]
+    #[timeout(SHORT_STANDALONE_TEST_TIMEOUT)]
     fn test_working_after_socket_listener_was_dropped() {
         let socket_path = get_socket_path_from_name(format!(
             "{}_test_working_after_socket_listener_was_dropped",
@@ -530,6 +575,13 @@ mod socket_listener {
             .build()
             .unwrap()
             .block_on(async {
+                let path = std::path::Path::new(&socket_path);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
                 let _ = UnixListener::bind(socket_path.clone()).unwrap();
                 // UDS sockets require explicit removal of the socket file
                 close_socket(&socket_path);

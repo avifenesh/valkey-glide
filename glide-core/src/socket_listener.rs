@@ -31,7 +31,6 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
-use std::os::unix::fs::PermissionsExt;
 use std::ptr::from_mut;
 use std::rc::Rc;
 use std::str;
@@ -831,6 +830,18 @@ fn get_unsafe_span_from_ptr(command_span: Option<u64>) -> Option<GlideSpan> {
 
 pub fn close_socket(socket_path: &String) {
     log_info("close_socket", format!("closing socket at {socket_path}"));
+    let path = std::path::Path::new(socket_path);
+    if let Some(file_name) = path.file_name() {
+        if file_name == "socket" {
+            if let Some(parent) = path.parent() {
+                // Ensure we are not deleting a top-level directory by checking if it has a parent
+                if parent.parent().is_some() {
+                    let _ = std::fs::remove_dir_all(parent);
+                    return;
+                }
+            }
+        }
+    }
     let _ = std::fs::remove_file(socket_path);
 }
 
@@ -1058,6 +1069,7 @@ pub fn get_socket_path_from_name(socket_name: String) -> String {
     };
     folder
         .join(socket_name)
+        .join("socket")
         .into_os_string()
         .into_string()
         .expect("Couldn't create socket path")
@@ -1069,7 +1081,7 @@ pub fn get_socket_path() -> String {
     // to the socket name. The UUID is used to ensure that the socket name is unique for situations in which PID can be resused such as with dockers.
     static SOCKET_NAME: Lazy<String> = Lazy::new(|| {
         format!(
-            "{}-{}-{}.sock",
+            "{}-{}-{}",
             SOCKET_FILE_NAME,
             std::process::id(),
             Uuid::new_v4(),
@@ -1122,6 +1134,24 @@ pub fn start_socket_listener_internal<InitCallback>(
     };
 
     glide_rt.runtime.spawn(async move {
+        let socket_path_buf = std::path::PathBuf::from(&socket_path_cloned);
+        let parent_dir = socket_path_buf.parent().unwrap();
+
+        // Use DirBuilder to create directory with permissions atomically (where supported) to avoid race conditions.
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder.recursive(true);
+
+        if let Err(err) = builder.create(parent_dir) {
+            log_error(
+                "listen_on_socket",
+                format!("Failed to create socket directory: {err}"),
+            );
+            let _ = tx.send(Err(err));
+            return;
+        }
+
         let listener_socket = match UnixListener::bind(socket_path_cloned.clone()) {
             Err(err) => {
                 log_error(
@@ -1142,18 +1172,6 @@ pub fn start_socket_listener_internal<InitCallback>(
             }
             Ok(listener_socket) => listener_socket,
         };
-
-        // Restrict permissions: rw------- (owner only)
-        if let Err(err) =
-            fs::set_permissions(&socket_path_cloned, fs::Permissions::from_mode(0o600))
-        {
-            log_error(
-                "listen_on_socket",
-                format!("Failed to set socket path permissions: {err:?}"),
-            );
-            let _ = tx.send(Err(err));
-            return;
-        }
 
         // Signal initialization is successful.
         let _ = tx.send(Ok(socket_path_cloned.clone()));
@@ -1176,7 +1194,7 @@ pub fn start_socket_listener_internal<InitCallback>(
 
         // ensure socket file removal
         drop(listener_socket);
-        let _ = std::fs::remove_file(socket_path_cloned.clone());
+        let _ = std::fs::remove_dir_all(parent_dir);
 
         // no more listening on socket - update the sockets db
         let mut sockets_write_guard = INITIALIZED_SOCKETS
