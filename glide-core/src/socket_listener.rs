@@ -106,7 +106,7 @@ impl UnixStreamListener {
 
             let buffer = self.rotating_buffer.current_buffer();
             if buffer.capacity() < 1024 {
-                buffer.reserve(65_536);
+                buffer.reserve(8192);
             }
 
             let read_result = self.read_socket.try_read_buf(buffer);

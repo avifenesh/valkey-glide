@@ -28,6 +28,13 @@ impl RotatingBuffer {
 
             match u32::decode_var(&self.backing_buffer[..]) {
                 Some((request_len, bytes_read)) => {
+                    if request_len > 100_000_000 {
+                        // 100MB sanity check
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "Request size too large",
+                        ));
+                    }
                     let total_len = bytes_read + request_len as usize;
                     if total_len > self.backing_buffer.len() {
                         break;
