@@ -104,9 +104,12 @@ impl UnixStreamListener {
                 return ClosingReason::UnhandledError(err.into()).into();
             }
 
-            let read_result = self
-                .read_socket
-                .try_read_buf(self.rotating_buffer.current_buffer());
+            let buffer = self.rotating_buffer.current_buffer();
+            if buffer.capacity() < 1024 {
+                buffer.reserve(65_536);
+            }
+
+            let read_result = self.read_socket.try_read_buf(buffer);
             match read_result {
                 Ok(0) => {
                     return ReadSocketClosed.into();

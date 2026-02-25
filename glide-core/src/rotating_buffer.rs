@@ -20,21 +20,24 @@ impl RotatingBuffer {
 
     /// Parses the requests in the buffer.
     pub fn get_requests<T: Message>(&mut self) -> io::Result<Vec<T>> {
-        let buffer = self.backing_buffer.split().freeze();
         let mut results: Vec<T> = vec![];
-        let mut prev_position = 0;
-        let buffer_len = buffer.len();
-        while prev_position < buffer_len {
-            if let Some((request_len, bytes_read)) = u32::decode_var(&buffer[prev_position..]) {
-                let start_pos = prev_position + bytes_read;
-                if (start_pos + request_len as usize) > buffer_len {
-                    break;
-                } else {
-                    match T::parse_from_tokio_bytes(
-                        &buffer.slice(start_pos..start_pos + request_len as usize),
-                    ) {
+        loop {
+            if self.backing_buffer.is_empty() {
+                break;
+            }
+
+            match u32::decode_var(&self.backing_buffer[..]) {
+                Some((request_len, bytes_read)) => {
+                    let total_len = bytes_read + request_len as usize;
+                    if total_len > self.backing_buffer.len() {
+                        break;
+                    }
+
+                    let mut message_buf = self.backing_buffer.split_to(total_len);
+                    let _ = message_buf.split_to(bytes_read);
+                    let body = message_buf.freeze();
+                    match T::parse_from_tokio_bytes(&body) {
                         Ok(request) => {
-                            prev_position += request_len as usize + bytes_read;
                             results.push(request);
                         }
                         Err(err) => {
@@ -43,14 +46,10 @@ impl RotatingBuffer {
                         }
                     }
                 }
-            } else {
-                break;
+                None => {
+                    break;
+                }
             }
-        }
-
-        if prev_position != buffer.len() {
-            self.backing_buffer
-                .extend_from_slice(&buffer[prev_position..]);
         }
         Ok(results)
     }

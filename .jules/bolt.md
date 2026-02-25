@@ -1,0 +1,3 @@
+## 2026-02-25 - [BytesMut::split() pitfalls]
+**Learning:** `BytesMut::split()` (equivalent to `split_to(len)`) returns a new buffer with the content and leaves the original buffer EMPTY. Crucially, if the buffer was full (len == capacity), the original buffer is left with 0 capacity. Attempting to `read_buf` into it immediately results in reading 0 bytes, which is interpreted as EOF/connection closed.
+**Action:** When using `split()` or `split_to()` on a buffer used for `read_buf`, ALWAYS ensure the buffer has capacity (`reserve()`) before the next read, or use a pattern that retains unused capacity.
