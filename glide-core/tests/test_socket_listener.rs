@@ -525,6 +525,9 @@ mod socket_listener {
         let path_arc = Arc::new(std::sync::Mutex::new(None));
         let path_arc_clone = Arc::clone(&path_arc);
 
+        let unique_name = format!("socket-permissions-test-{}", generate_random_string(10));
+        let unique_path = get_socket_path_from_name(unique_name);
+
         socket_listener::start_socket_listener_internal(
             move |res| {
                 let path: String = res.expect("Failed to initialize the socket listener");
@@ -532,7 +535,7 @@ mod socket_listener {
                 *path_arc_clone = Some(path);
                 cloned_state.set();
             },
-            None,
+            Some(unique_path),
         );
         socket_listener_state.wait();
 

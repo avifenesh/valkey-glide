@@ -831,14 +831,12 @@ fn get_unsafe_span_from_ptr(command_span: Option<u64>) -> Option<GlideSpan> {
 pub fn close_socket(socket_path: &String) {
     log_info("close_socket", format!("closing socket at {socket_path}"));
     let path = std::path::Path::new(socket_path);
-    if let Some(file_name) = path.file_name() {
-        if file_name == "socket" {
-            if let Some(parent) = path.parent() {
-                // Ensure we are not deleting a top-level directory by checking if it has a parent
-                if parent.parent().is_some() {
-                    let _ = std::fs::remove_dir_all(parent);
-                    return;
-                }
+    if path.file_name() == Some(std::ffi::OsStr::new("socket")) {
+        if let Some(parent) = path.parent() {
+            // Ensure we are not deleting a top-level directory by checking if it has a parent
+            if parent.parent().is_some() {
+                let _ = std::fs::remove_dir_all(parent);
+                return;
             }
         }
     }
