@@ -82,7 +82,7 @@ jobs:
             host-matrix-output: ${{ steps.get-matrices.outputs.host-matrix-output }}
             version-matrix-output: ${{ steps.get-matrices.outputs.version-matrix-output }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - id: get-matrices
               uses: ./.github/workflows/create-test-matrices
               with:
@@ -104,7 +104,7 @@ jobs:
         runs-on: ${{ matrix.host.RUNNER }}
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Output Matrix Parameters for this job
               run: |
@@ -206,7 +206,7 @@ jobs:
         runs-on: ${{ matrix.host.RUNNER }}
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Output Matrix Parameters for this job
               run: |
@@ -273,7 +273,7 @@ jobs:
         timeout-minutes: 30
         runs-on: ubuntu-24.04-arm
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Set up JDK 11
               uses: actions/setup-java@v4
@@ -338,7 +338,7 @@ jobs:
             version-matrix-output: ${{ steps.get-matrices.outputs.version-matrix-output }}
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - id: get-matrices
               uses: ./.github/workflows/create-test-matrices
               with:
@@ -385,7 +385,7 @@ jobs:
                     echo "org.gradle.java.installations.auto-download=false" >> ~/.gradle/gradle.properties
                   fi
             # Replace `:` in the variable otherwise it can't be used in `upload-artifact`
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
               with:
                   submodules: recursive
 
@@ -466,7 +466,7 @@ jobs:
         timeout-minutes: 15
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - uses: ./.github/workflows/lint-rust
               with:
@@ -484,7 +484,7 @@ jobs:
             - name: Setup self-hosted runner access
               run: sudo chown -R $USER:$USER /home/ubuntu/actions-runner/_work/valkey-glide
 
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Set up JDK
               uses: actions/setup-java@v4

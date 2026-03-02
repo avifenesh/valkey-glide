@@ -109,7 +109,7 @@ jobs:
             host-matrix-output: ${{ steps.get-matrices.outputs.host-matrix-output }}
             version-matrix-output: ${{ steps.get-matrices.outputs.version-matrix-output }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - id: get-matrices
               uses: ./.github/workflows/create-test-matrices
               with:
@@ -129,7 +129,7 @@ jobs:
                 engine: ${{ fromJson(needs.get-matrices.outputs.engine-matrix-output) }}
                 host: ${{ fromJson(needs.get-matrices.outputs.host-matrix-output) }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Output Matrix Parameters for this job
               run: |
@@ -219,7 +219,7 @@ jobs:
                 engine: ${{ fromJson(needs.get-matrices.outputs.engine-matrix-output) }}
                 host: ${{ fromJson(needs.get-matrices.outputs.host-matrix-output) }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Output Matrix Parameters for this job
               run: |
@@ -314,7 +314,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: lint rust
               uses: ./.github/workflows/lint-rust
@@ -338,7 +338,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Install dependencies
               working-directory: ./python
@@ -364,7 +364,7 @@ jobs:
             version-matrix-output: ${{ steps.get-matrices.outputs.version-matrix-output }}
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - id: get-matrices
               uses: ./.github/workflows/create-test-matrices
               with:
@@ -396,7 +396,7 @@ jobs:
                   python3 -m pip install mypy-protobuf virtualenv
                   echo IMAGE=amazonlinux:latest | sed -r 's/:/-/g' >> $GITHUB_ENV
             # Replace `:` in the variable otherwise it can't be used in `upload-artifact`
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - uses: actions/cache@v4
               with:
@@ -448,7 +448,7 @@ jobs:
             - name: Setup self-hosted runner access
               run: sudo chown -R $USER:$USER /home/ubuntu/actions-runner/_work/valkey-glide
 
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
               with:
                   submodules: recursive
 
