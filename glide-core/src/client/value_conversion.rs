@@ -1,8 +1,20 @@
 // Copyright Valkey GLIDE Project Contributors - SPDX Identifier: Apache-2.0
 
 use redis::{
-    Cmd, ErrorKind, RedisResult, Value, cluster_routing::Routable, from_owned_redis_value,
+    Cmd, ErrorKind, RedisError, RedisResult, Value, cluster_routing::Routable,
+    from_owned_redis_value,
 };
+
+/// Creates a `TypeError` indicating a response could not be converted to the expected type.
+/// Centralizes the repeated `(response was ...)` error pattern used across conversion functions.
+fn unexpected_type_error(expected: &'static str, value: &Value) -> RedisError {
+    (
+        ErrorKind::TypeError,
+        expected,
+        format!("(response was {:?})", get_value_type(value)),
+    )
+        .into()
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum ExpectedReturnType<'a> {
@@ -67,12 +79,10 @@ pub(crate) fn convert_to_expected_type(
             Value::Nil => Ok(value),
             Value::Map(map) => convert_inner_map_by_type(map, *key_type, *value_type),
             Value::Array(array) => convert_array_to_map_by_type(array, *key_type, *value_type),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to map",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::MapOfStringToDouble => match value {
             Value::Nil => Ok(value),
@@ -93,23 +103,19 @@ pub(crate) fn convert_to_expected_type(
                 Some(ExpectedReturnType::BulkString),
                 Some(ExpectedReturnType::Double),
             ),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to map of {string: double}",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::Set => match value {
             Value::Nil => Ok(value),
             Value::Set(_) => Ok(value),
             Value::Array(array) => Ok(Value::Set(array)),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to set",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::Double => Ok(Value::Double(from_owned_redis_value::<f64>(value)?)),
         ExpectedReturnType::Boolean => Ok(Value::Boolean(from_owned_redis_value::<bool>(value)?)),
@@ -133,12 +139,10 @@ pub(crate) fn convert_to_expected_type(
 
                 Ok(Value::Array(array))
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to Array (ZRankResponseType)",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::BulkString => match value {
             Value::BulkString(_) => Ok(value),
@@ -155,12 +159,10 @@ pub(crate) fn convert_to_expected_type(
                         Value::Nil => Ok(Value::Nil),
                         _ => match from_owned_redis_value::<bool>(item.clone()) {
                             Ok(boolean_value) => Ok(Value::Boolean(boolean_value)),
-                            _ => Err((
-                                ErrorKind::TypeError,
+                            _ => Err(unexpected_type_error(
                                 "Could not convert value to boolean",
-                                format!("(response was {:?})", get_value_type(&item)),
-                            )
-                                .into()),
+                                &item,
+                            )),
                         },
                     })
                     .collect();
@@ -170,28 +172,22 @@ pub(crate) fn convert_to_expected_type(
             Value::BulkString(ref bytes) => match std::str::from_utf8(bytes) {
                 Ok("true") => Ok(Value::Boolean(true)),
                 Ok("false") => Ok(Value::Boolean(false)),
-                _ => Err((
-                    ErrorKind::TypeError,
+                _ => Err(unexpected_type_error(
                     "Response couldn't be converted to boolean",
-                    format!("(response was {:?})", get_value_type(&value)),
-                )
-                    .into()),
+                    &value,
+                )),
             },
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to Json Toggle return type",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::ArrayOfBools => match value {
             Value::Array(array) => convert_array_elements(array, ExpectedReturnType::Boolean),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to an array of boolean",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::ArrayOfStrings => match value {
             Value::Array(array) => convert_array_elements(array, ExpectedReturnType::BulkString),
@@ -203,12 +199,10 @@ pub(crate) fn convert_to_expected_type(
         },
         ExpectedReturnType::ArrayOfDoubleOrNull => match value {
             Value::Array(array) => convert_array_elements(array, ExpectedReturnType::DoubleOrNull),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to an array of doubles",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         // command returns nil or an array of 2 elements, where the second element is a map represented by a 2D array
         // we convert that second element to a map as we do in `MapOfStringToDouble`
@@ -234,12 +228,10 @@ pub(crate) fn convert_to_expected_type(
                 )?;
                 Ok(Value::Array(vec![array[0].clone(), map]))
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to ZMPOP return type",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::ArrayOfArraysOfDoubleOrNull => match value {
             // This is used for GEOPOS command.
@@ -268,23 +260,19 @@ pub(crate) fn convert_to_expected_type(
 
                             Ok(Value::Array(inner_array))
                         }
-                        _ => Err((
-                            ErrorKind::TypeError,
+                        _ => Err(unexpected_type_error(
                             "Response couldn't be converted to an array of array of double or null. Inner value of Array must be Array or Null",
-                            format!("(response was {:?})", get_value_type(&item)),
-                        )
-                            .into()),
+                            &item,
+                        )),
                     })
                     .collect();
 
                 converted_array.map(Value::Array)
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to an array of array of double or null",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::Lolwut => {
             match value {
@@ -302,12 +290,10 @@ pub(crate) fn convert_to_expected_type(
                     let res = convert_lolwut_string(text);
                     Ok(Value::BulkString(Vec::from(res)))
                 }
-                _ => Err((
-                    ErrorKind::TypeError,
+                _ => Err(unexpected_type_error(
                     "LOLWUT response couldn't be converted to a user-friendly format",
-                    format!("(response was {:?})", get_value_type(&value)),
-                )
-                    .into()),
+                    &value,
+                )),
             }
         }
         // Used by HRANDFIELD when the WITHVALUES arg is passed.
@@ -367,12 +353,10 @@ pub(crate) fn convert_to_expected_type(
                     convert_to_expected_type(array[2].clone(), Some(ExpectedReturnType::Double))?;
                 Ok(Value::Array(array))
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to an array containing a key, member, and score",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         // Used by GEOSEARCH.
         // When all options are specified (withcoord, withdist, withhash) , the response looks like this: [[name (str), [dist (str), hash (int), [lon (str), lat (str)]]]] for RESP2.
@@ -499,12 +483,10 @@ pub(crate) fn convert_to_expected_type(
             Value::BulkString(_) | Value::SimpleString(_) | Value::VerbatimString { .. } => {
                 Ok(value)
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         // Not used for a command, but used as a helper for `FUNCTION LIST` to process the inner map.
         // It may contain a string (name, description) or set (flags), or nil (description).
@@ -515,12 +497,10 @@ pub(crate) fn convert_to_expected_type(
             | Value::BulkString(_)
             | Value::SimpleString(_)
             | Value::VerbatimString { .. } => Ok(value),
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         // `FUNCTION STATS` returns nested maps with different types of data
         /* RESP2 response example
@@ -649,12 +629,10 @@ pub(crate) fn convert_to_expected_type(
 
                 Ok(Value::Array(result))
             },
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to an XAUTOCLAIM response",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         // `XINFO STREAM` returns nested maps with different types of data
         /* RESP2 response example
@@ -880,12 +858,10 @@ pub(crate) fn convert_to_expected_type(
 
                 Ok(Value::Map(map))
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted to XInfoStreamFullReturnType",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::FTAggregateReturnType => match value {
             /*
@@ -944,12 +920,10 @@ pub(crate) fn convert_to_expected_type(
                 }
                 Ok(Value::Array(res))
             }
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted for FT.AGGREGATE",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into()),
+                &value,
+            )),
         },
         ExpectedReturnType::FTSearchReturnType => match value {
             /*
@@ -990,12 +964,10 @@ pub(crate) fn convert_to_expected_type(
                     }))?
                 ]))
             },
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted for FT.SEARCH",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into())
+                &value,
+            ))
         },
         ExpectedReturnType::FTInfoReturnType => match value {
             /*
@@ -1091,12 +1063,10 @@ pub(crate) fn convert_to_expected_type(
                 let _ = std::mem::replace(fields_pair, (fields_key, Value::Array(fields)));
                 Ok(Value::Map(map))
             },
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted for FT.INFO",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into())
+                &value,
+            ))
         },
         ExpectedReturnType::FTProfileReturnType(type_of_query) => match value {
             /*
@@ -1129,12 +1099,10 @@ pub(crate) fn convert_to_expected_type(
 
                 Ok(Value::Array(res))
             },
-            _ => Err((
-                ErrorKind::TypeError,
+            _ => Err(unexpected_type_error(
                 "Response couldn't be converted for FT.PROFILE",
-                format!("(response was {:?})", get_value_type(&value)),
-            )
-                .into())
+                &value,
+            ))
         }
         ExpectedReturnType::SingleOrMultiNode(value_type, value_checker) =>  match value {
             Value::Map(ref map) => match value_checker {
@@ -1357,12 +1325,10 @@ fn convert_to_array_of_pairs(
             // odd indices.
             convert_flat_array_to_array_of_pairs(array, value_expected_return_type)
         }
-        _ => Err((
-            ErrorKind::TypeError,
+        _ => Err(unexpected_type_error(
             "Response couldn't be converted to an array of key-value pairs",
-            format!("(response was {:?})", get_value_type(&response)),
-        )
-            .into()),
+            &response,
+        )),
     }
 }
 

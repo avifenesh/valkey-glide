@@ -334,41 +334,44 @@ impl StandaloneClient {
         }
     }
 
-    async fn round_robin_read_from_replica_az_awareness(
+    /// Searches all nodes via round-robin for a connected replica in the given availability zone.
+    /// Returns the matching replica, or `None` if no same-AZ replica is available.
+    async fn find_replica_in_az(
         &self,
         latest_read_replica_index: &Arc<AtomicUsize>,
-        client_az: String,
-    ) -> &ReconnectingConnection {
+        client_az: &str,
+    ) -> Option<&ReconnectingConnection> {
         let initial_index = latest_read_replica_index.load(Ordering::Relaxed);
-        let mut retries = 0usize;
 
-        loop {
-            retries = retries.saturating_add(1);
-            // Looped through all replicas; no connected replica found in the same AZ.
-            if retries > self.inner.nodes.len() {
-                // Attempt a fallback to any available replica in other AZs or primary.
-                return self.round_robin_read_from_replica(latest_read_replica_index);
-            }
+        for offset in 1..=self.inner.nodes.len() {
+            let index = (initial_index + offset) % self.inner.nodes.len();
+            let node = &self.inner.nodes[index];
 
-            // Calculate index based on initial index and check count.
-            let index = (initial_index + retries) % self.inner.nodes.len();
-            let replica = &self.inner.nodes[index];
-
-            // Attempt to get a connection and retrieve the replica's AZ.
-            if let Ok(connection) = replica.get_connection().await
-                && let Some(replica_az) = connection.get_az().as_deref()
-                && replica_az == client_az
+            if let Ok(connection) = node.get_connection().await
+                && let Some(az) = connection.get_az().as_deref()
+                && az == client_az
             {
-                // Update `latest_used_replica` with the index of this replica.
                 let _ = latest_read_replica_index.compare_exchange_weak(
                     initial_index,
                     index,
                     Ordering::Relaxed,
                     Ordering::Relaxed,
                 );
-                return replica;
+                return Some(node);
             }
         }
+
+        None
+    }
+
+    async fn round_robin_read_from_replica_az_awareness(
+        &self,
+        latest_read_replica_index: &Arc<AtomicUsize>,
+        client_az: String,
+    ) -> &ReconnectingConnection {
+        self.find_replica_in_az(latest_read_replica_index, &client_az)
+            .await
+            .unwrap_or_else(|| self.round_robin_read_from_replica(latest_read_replica_index))
     }
 
     async fn round_robin_read_from_replica_az_awareness_replicas_and_primary(
@@ -376,35 +379,12 @@ impl StandaloneClient {
         latest_read_replica_index: &Arc<AtomicUsize>,
         client_az: String,
     ) -> &ReconnectingConnection {
-        let initial_index = latest_read_replica_index.load(Ordering::Relaxed);
-        let mut retries = 0usize;
-
         // Step 1: Try to find a replica in the same AZ
-        loop {
-            retries = retries.saturating_add(1);
-            // Looped through all replicas; no connected replica found in the same AZ.
-            if retries >= self.inner.nodes.len() {
-                break;
-            }
-
-            // Calculate index based on initial index and check count.
-            let index = (initial_index + retries) % self.inner.nodes.len();
-            let replica = &self.inner.nodes[index];
-
-            // Attempt to get a connection and retrieve the replica's AZ.
-            if let Ok(connection) = replica.get_connection().await
-                && let Some(replica_az) = connection.get_az().as_deref()
-                && replica_az == client_az
-            {
-                // Update `latest_used_replica` with the index of this replica.
-                let _ = latest_read_replica_index.compare_exchange_weak(
-                    initial_index,
-                    index,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
-                return replica;
-            }
+        if let Some(replica) = self
+            .find_replica_in_az(latest_read_replica_index, &client_az)
+            .await
+        {
+            return replica;
         }
 
         // Step 2: Check if primary is in the same AZ
