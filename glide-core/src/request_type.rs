@@ -1256,3 +1256,938 @@ impl RequestType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: extract the command name from a Cmd.
+    /// Cmd packs args into its internal buffer. The first arg is the command name.
+    fn get_cmd_name(cmd: &Cmd) -> String {
+        // Use the Debug output to extract the command name
+        let packed = cmd.get_packed_command();
+        // RESP protocol: *N\r\n$len\r\nCMD\r\n...
+        let s = String::from_utf8_lossy(&packed);
+        let parts: Vec<&str> = s.split("\r\n").collect();
+        // parts[0] = *N (arg count), parts[1] = $len, parts[2] = CMD_NAME
+        if parts.len() >= 3 {
+            parts[2].to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Helper: extract second arg (subcommand) from a two-word command.
+    fn get_cmd_subcommand(cmd: &Cmd) -> String {
+        let packed = cmd.get_packed_command();
+        let s = String::from_utf8_lossy(&packed);
+        let parts: Vec<&str> = s.split("\r\n").collect();
+        // parts[0] = *N, parts[1] = $len1, parts[2] = CMD, parts[3] = $len2, parts[4] = SUBCMD
+        if parts.len() >= 5 {
+            parts[4].to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    #[test]
+    fn test_invalid_request_returns_none() {
+        assert!(RequestType::InvalidRequest.get_command().is_none());
+    }
+
+    #[test]
+    fn test_custom_command_returns_empty_cmd() {
+        let cmd = RequestType::CustomCommand.get_command();
+        assert!(cmd.is_some());
+    }
+
+    // --- Core data commands ---
+
+    #[test]
+    fn test_get_command_mapping() {
+        let cmd = RequestType::Get.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GET");
+    }
+
+    #[test]
+    fn test_set_command_mapping() {
+        let cmd = RequestType::Set.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SET");
+    }
+
+    #[test]
+    fn test_del_command_mapping() {
+        let cmd = RequestType::Del.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "DEL");
+    }
+
+    #[test]
+    fn test_ping_command_mapping() {
+        let cmd = RequestType::Ping.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PING");
+    }
+
+    #[test]
+    fn test_info_command_mapping() {
+        let cmd = RequestType::Info.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "INFO");
+    }
+
+    // --- String commands ---
+
+    #[test]
+    fn test_mset_command_mapping() {
+        let cmd = RequestType::MSet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "MSET");
+    }
+
+    #[test]
+    fn test_mget_command_mapping() {
+        let cmd = RequestType::MGet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "MGET");
+    }
+
+    #[test]
+    fn test_incr_command_mapping() {
+        let cmd = RequestType::Incr.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "INCR");
+    }
+
+    #[test]
+    fn test_decr_command_mapping() {
+        let cmd = RequestType::Decr.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "DECR");
+    }
+
+    #[test]
+    fn test_append_command_mapping() {
+        let cmd = RequestType::Append.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "APPEND");
+    }
+
+    #[test]
+    fn test_strlen_command_mapping() {
+        let cmd = RequestType::Strlen.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "STRLEN");
+    }
+
+    #[test]
+    fn test_getdel_command_mapping() {
+        let cmd = RequestType::GetDel.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GETDEL");
+    }
+
+    #[test]
+    fn test_getex_command_mapping() {
+        let cmd = RequestType::GetEx.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GETEX");
+    }
+
+    // --- Hash commands ---
+
+    #[test]
+    fn test_hset_command_mapping() {
+        let cmd = RequestType::HSet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HSET");
+    }
+
+    #[test]
+    fn test_hget_command_mapping() {
+        let cmd = RequestType::HGet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HGET");
+    }
+
+    #[test]
+    fn test_hdel_command_mapping() {
+        let cmd = RequestType::HDel.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HDEL");
+    }
+
+    #[test]
+    fn test_hgetall_command_mapping() {
+        let cmd = RequestType::HGetAll.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HGETALL");
+    }
+
+    #[test]
+    fn test_hlen_command_mapping() {
+        let cmd = RequestType::HLen.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HLEN");
+    }
+
+    #[test]
+    fn test_hexists_command_mapping() {
+        let cmd = RequestType::HExists.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HEXISTS");
+    }
+
+    #[test]
+    fn test_hsetex_command_mapping() {
+        let cmd = RequestType::HSetEx.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HSETEX");
+    }
+
+    #[test]
+    fn test_hgetex_command_mapping() {
+        let cmd = RequestType::HGetEx.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "HGETEX");
+    }
+
+    // --- List commands ---
+
+    #[test]
+    fn test_lpush_command_mapping() {
+        let cmd = RequestType::LPush.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LPUSH");
+    }
+
+    #[test]
+    fn test_rpush_command_mapping() {
+        let cmd = RequestType::RPush.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "RPUSH");
+    }
+
+    #[test]
+    fn test_lpop_command_mapping() {
+        let cmd = RequestType::LPop.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LPOP");
+    }
+
+    #[test]
+    fn test_rpop_command_mapping() {
+        let cmd = RequestType::RPop.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "RPOP");
+    }
+
+    #[test]
+    fn test_llen_command_mapping() {
+        let cmd = RequestType::LLen.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LLEN");
+    }
+
+    #[test]
+    fn test_lrange_command_mapping() {
+        let cmd = RequestType::LRange.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LRANGE");
+    }
+
+    #[test]
+    fn test_lindex_command_mapping() {
+        let cmd = RequestType::LIndex.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LINDEX");
+    }
+
+    #[test]
+    fn test_lmove_command_mapping() {
+        let cmd = RequestType::LMove.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LMOVE");
+    }
+
+    // --- Set commands ---
+
+    #[test]
+    fn test_sadd_command_mapping() {
+        let cmd = RequestType::SAdd.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SADD");
+    }
+
+    #[test]
+    fn test_srem_command_mapping() {
+        let cmd = RequestType::SRem.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SREM");
+    }
+
+    #[test]
+    fn test_smembers_command_mapping() {
+        let cmd = RequestType::SMembers.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SMEMBERS");
+    }
+
+    #[test]
+    fn test_scard_command_mapping() {
+        let cmd = RequestType::SCard.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SCARD");
+    }
+
+    #[test]
+    fn test_sismember_command_mapping() {
+        let cmd = RequestType::SIsMember.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SISMEMBER");
+    }
+
+    // --- Sorted set commands ---
+
+    #[test]
+    fn test_zadd_command_mapping() {
+        let cmd = RequestType::ZAdd.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZADD");
+    }
+
+    #[test]
+    fn test_zrem_command_mapping() {
+        let cmd = RequestType::ZRem.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZREM");
+    }
+
+    #[test]
+    fn test_zrange_command_mapping() {
+        let cmd = RequestType::ZRange.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZRANGE");
+    }
+
+    #[test]
+    fn test_zcard_command_mapping() {
+        let cmd = RequestType::ZCard.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZCARD");
+    }
+
+    #[test]
+    fn test_zscore_command_mapping() {
+        let cmd = RequestType::ZScore.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZSCORE");
+    }
+
+    #[test]
+    fn test_zpopmin_command_mapping() {
+        let cmd = RequestType::ZPopMin.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZPOPMIN");
+    }
+
+    #[test]
+    fn test_zpopmax_command_mapping() {
+        let cmd = RequestType::ZPopMax.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ZPOPMAX");
+    }
+
+    // --- Two-word commands (subcommands) ---
+
+    #[test]
+    fn test_config_get_two_word() {
+        let cmd = RequestType::ConfigGet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CONFIG");
+        assert_eq!(get_cmd_subcommand(&cmd), "GET");
+    }
+
+    #[test]
+    fn test_config_set_two_word() {
+        let cmd = RequestType::ConfigSet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CONFIG");
+        assert_eq!(get_cmd_subcommand(&cmd), "SET");
+    }
+
+    #[test]
+    fn test_client_id_two_word() {
+        let cmd = RequestType::ClientId.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CLIENT");
+        assert_eq!(get_cmd_subcommand(&cmd), "ID");
+    }
+
+    #[test]
+    fn test_client_getname_two_word() {
+        let cmd = RequestType::ClientGetName.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CLIENT");
+        assert_eq!(get_cmd_subcommand(&cmd), "GETNAME");
+    }
+
+    #[test]
+    fn test_cluster_info_two_word() {
+        let cmd = RequestType::ClusterInfo.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CLUSTER");
+        assert_eq!(get_cmd_subcommand(&cmd), "INFO");
+    }
+
+    #[test]
+    fn test_cluster_nodes_two_word() {
+        let cmd = RequestType::ClusterNodes.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CLUSTER");
+        assert_eq!(get_cmd_subcommand(&cmd), "NODES");
+    }
+
+    #[test]
+    fn test_cluster_shards_two_word() {
+        let cmd = RequestType::ClusterShards.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "CLUSTER");
+        assert_eq!(get_cmd_subcommand(&cmd), "SHARDS");
+    }
+
+    #[test]
+    fn test_function_load_two_word() {
+        let cmd = RequestType::FunctionLoad.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FUNCTION");
+        assert_eq!(get_cmd_subcommand(&cmd), "LOAD");
+    }
+
+    #[test]
+    fn test_xgroup_create_two_word() {
+        let cmd = RequestType::XGroupCreate.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XGROUP");
+        assert_eq!(get_cmd_subcommand(&cmd), "CREATE");
+    }
+
+    #[test]
+    fn test_object_encoding_two_word() {
+        let cmd = RequestType::ObjectEncoding.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "OBJECT");
+        assert_eq!(get_cmd_subcommand(&cmd), "ENCODING");
+    }
+
+    #[test]
+    fn test_acl_list_two_word() {
+        let cmd = RequestType::AclList.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "ACL");
+        assert_eq!(get_cmd_subcommand(&cmd), "LIST");
+    }
+
+    #[test]
+    fn test_slowlog_get_two_word() {
+        let cmd = RequestType::SlowLogGet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SLOWLOG");
+        assert_eq!(get_cmd_subcommand(&cmd), "GET");
+    }
+
+    #[test]
+    fn test_memory_usage_two_word() {
+        let cmd = RequestType::MemoryUsage.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "MEMORY");
+        assert_eq!(get_cmd_subcommand(&cmd), "USAGE");
+    }
+
+    #[test]
+    fn test_module_list_two_word() {
+        let cmd = RequestType::ModuleList.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "MODULE");
+        assert_eq!(get_cmd_subcommand(&cmd), "LIST");
+    }
+
+    #[test]
+    fn test_latency_latest_two_word() {
+        let cmd = RequestType::LatencyLatest.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "LATENCY");
+        assert_eq!(get_cmd_subcommand(&cmd), "LATEST");
+    }
+
+    #[test]
+    fn test_xinfo_groups_two_word() {
+        let cmd = RequestType::XInfoGroups.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XINFO");
+        assert_eq!(get_cmd_subcommand(&cmd), "GROUPS");
+    }
+
+    #[test]
+    fn test_pubsub_channels_two_word() {
+        let cmd = RequestType::PubSubChannels.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PUBSUB");
+        assert_eq!(get_cmd_subcommand(&cmd), "CHANNELS");
+    }
+
+    #[test]
+    fn test_script_exists_two_word() {
+        let cmd = RequestType::ScriptExists.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SCRIPT");
+        assert_eq!(get_cmd_subcommand(&cmd), "EXISTS");
+    }
+
+    // --- JSON module commands ---
+
+    #[test]
+    fn test_json_get_command_mapping() {
+        let cmd = RequestType::JsonGet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "JSON.GET");
+    }
+
+    #[test]
+    fn test_json_set_command_mapping() {
+        let cmd = RequestType::JsonSet.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "JSON.SET");
+    }
+
+    #[test]
+    fn test_json_del_command_mapping() {
+        let cmd = RequestType::JsonDel.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "JSON.DEL");
+    }
+
+    // --- FT (Search) commands ---
+
+    #[test]
+    fn test_ft_search_command_mapping() {
+        let cmd = RequestType::FtSearch.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FT.SEARCH");
+    }
+
+    #[test]
+    fn test_ft_create_command_mapping() {
+        let cmd = RequestType::FtCreate.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FT.CREATE");
+    }
+
+    #[test]
+    fn test_ft_list_command_mapping() {
+        let cmd = RequestType::FtList.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FT._LIST");
+    }
+
+    // --- Stream commands ---
+
+    #[test]
+    fn test_xadd_command_mapping() {
+        let cmd = RequestType::XAdd.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XADD");
+    }
+
+    #[test]
+    fn test_xread_command_mapping() {
+        let cmd = RequestType::XRead.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XREAD");
+    }
+
+    #[test]
+    fn test_xlen_command_mapping() {
+        let cmd = RequestType::XLen.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XLEN");
+    }
+
+    #[test]
+    fn test_xrange_command_mapping() {
+        let cmd = RequestType::XRange.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "XRANGE");
+    }
+
+    // --- Bitmap commands ---
+
+    #[test]
+    fn test_bitcount_command_mapping() {
+        let cmd = RequestType::BitCount.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "BITCOUNT");
+    }
+
+    #[test]
+    fn test_setbit_command_mapping() {
+        let cmd = RequestType::SetBit.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "SETBIT");
+    }
+
+    #[test]
+    fn test_getbit_command_mapping() {
+        let cmd = RequestType::GetBit.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GETBIT");
+    }
+
+    // --- TTL / Expiry commands ---
+
+    #[test]
+    fn test_expire_command_mapping() {
+        let cmd = RequestType::Expire.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "EXPIRE");
+    }
+
+    #[test]
+    fn test_ttl_command_mapping() {
+        let cmd = RequestType::TTL.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "TTL");
+    }
+
+    #[test]
+    fn test_pttl_command_mapping() {
+        let cmd = RequestType::PTTL.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PTTL");
+    }
+
+    #[test]
+    fn test_persist_command_mapping() {
+        let cmd = RequestType::Persist.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PERSIST");
+    }
+
+    // --- Geo commands ---
+
+    #[test]
+    fn test_geoadd_command_mapping() {
+        let cmd = RequestType::GeoAdd.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GEOADD");
+    }
+
+    #[test]
+    fn test_geosearch_command_mapping() {
+        let cmd = RequestType::GeoSearch.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "GEOSEARCH");
+    }
+
+    // --- HyperLogLog commands ---
+
+    #[test]
+    fn test_pfadd_command_mapping() {
+        let cmd = RequestType::PfAdd.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PFADD");
+    }
+
+    #[test]
+    fn test_pfcount_command_mapping() {
+        let cmd = RequestType::PfCount.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "PFCOUNT");
+    }
+
+    // --- Server management commands ---
+
+    #[test]
+    fn test_flushall_command_mapping() {
+        let cmd = RequestType::FlushAll.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FLUSHALL");
+    }
+
+    #[test]
+    fn test_flushdb_command_mapping() {
+        let cmd = RequestType::FlushDB.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "FLUSHDB");
+    }
+
+    #[test]
+    fn test_dbsize_command_mapping() {
+        let cmd = RequestType::DBSize.get_command().unwrap();
+        assert_eq!(get_cmd_name(&cmd), "DBSIZE");
+    }
+
+    // --- Compression behavior ---
+
+    #[test]
+    fn test_compression_behavior_set_compresses() {
+        let behavior = RequestType::Set.compression_behavior();
+        assert!(matches!(
+            behavior,
+            crate::compression::CommandCompressionBehavior::CompressValues
+        ));
+    }
+
+    #[test]
+    fn test_compression_behavior_get_decompresses() {
+        let behavior = RequestType::Get.compression_behavior();
+        assert!(matches!(
+            behavior,
+            crate::compression::CommandCompressionBehavior::DecompressValues
+        ));
+    }
+
+    #[test]
+    fn test_compression_behavior_other_no_compression() {
+        let behavior = RequestType::Ping.compression_behavior();
+        assert!(matches!(
+            behavior,
+            crate::compression::CommandCompressionBehavior::NoCompression
+        ));
+
+        let behavior = RequestType::HSet.compression_behavior();
+        assert!(matches!(
+            behavior,
+            crate::compression::CommandCompressionBehavior::NoCompression
+        ));
+    }
+
+    // --- Exhaustive check: all non-subscribe variants return Some ---
+    // This test ensures no variant was accidentally left unmapped.
+    // It covers every variant except subscribe/blocking which map to internal names.
+
+    #[test]
+    fn test_all_standard_commands_return_some() {
+        let standard_types = vec![
+            RequestType::Get,
+            RequestType::Set,
+            RequestType::Del,
+            RequestType::Ping,
+            RequestType::Info,
+            RequestType::Select,
+            RequestType::Auth,
+            RequestType::Echo,
+            RequestType::Type,
+            RequestType::Exists,
+            RequestType::Unlink,
+            RequestType::Keys,
+            RequestType::Rename,
+            RequestType::RenameNX,
+            RequestType::Copy,
+            RequestType::Move,
+            RequestType::Sort,
+            RequestType::SortReadOnly,
+            RequestType::Touch,
+            RequestType::TTL,
+            RequestType::PTTL,
+            RequestType::Expire,
+            RequestType::ExpireAt,
+            RequestType::PExpire,
+            RequestType::PExpireAt,
+            RequestType::ExpireTime,
+            RequestType::PExpireTime,
+            RequestType::Persist,
+            RequestType::Dump,
+            RequestType::Restore,
+            RequestType::Scan,
+            RequestType::RandomKey,
+            RequestType::Wait,
+            RequestType::WaitAof,
+            RequestType::MSet,
+            RequestType::MSetNX,
+            RequestType::MGet,
+            RequestType::Incr,
+            RequestType::IncrBy,
+            RequestType::IncrByFloat,
+            RequestType::Decr,
+            RequestType::DecrBy,
+            RequestType::Append,
+            RequestType::Strlen,
+            RequestType::SetRange,
+            RequestType::GetRange,
+            RequestType::GetDel,
+            RequestType::GetEx,
+            RequestType::LCS,
+            RequestType::HSet,
+            RequestType::HGet,
+            RequestType::HDel,
+            RequestType::HExists,
+            RequestType::HGetAll,
+            RequestType::HMSet,
+            RequestType::HMGet,
+            RequestType::HIncrBy,
+            RequestType::HIncrByFloat,
+            RequestType::HLen,
+            RequestType::HKeys,
+            RequestType::HVals,
+            RequestType::HSetNX,
+            RequestType::HRandField,
+            RequestType::HStrlen,
+            RequestType::HScan,
+            RequestType::HSetEx,
+            RequestType::HGetEx,
+            RequestType::HExpire,
+            RequestType::HExpireAt,
+            RequestType::HPExpire,
+            RequestType::HPExpireAt,
+            RequestType::HPersist,
+            RequestType::HTtl,
+            RequestType::HPTtl,
+            RequestType::HExpireTime,
+            RequestType::HPExpireTime,
+            RequestType::LPush,
+            RequestType::LPushX,
+            RequestType::RPush,
+            RequestType::RPushX,
+            RequestType::LPop,
+            RequestType::RPop,
+            RequestType::LLen,
+            RequestType::LRem,
+            RequestType::LRange,
+            RequestType::LTrim,
+            RequestType::LIndex,
+            RequestType::LInsert,
+            RequestType::LSet,
+            RequestType::LPos,
+            RequestType::LMove,
+            RequestType::BLMove,
+            RequestType::BLPop,
+            RequestType::BRPop,
+            RequestType::LMPop,
+            RequestType::BLMPop,
+            RequestType::SAdd,
+            RequestType::SRem,
+            RequestType::SMembers,
+            RequestType::SCard,
+            RequestType::SIsMember,
+            RequestType::SMIsMember,
+            RequestType::SPop,
+            RequestType::SRandMember,
+            RequestType::SMove,
+            RequestType::SDiff,
+            RequestType::SDiffStore,
+            RequestType::SInter,
+            RequestType::SInterStore,
+            RequestType::SInterCard,
+            RequestType::SUnion,
+            RequestType::SUnionStore,
+            RequestType::SScan,
+            RequestType::ZAdd,
+            RequestType::ZRem,
+            RequestType::ZRange,
+            RequestType::ZCard,
+            RequestType::ZCount,
+            RequestType::ZIncrBy,
+            RequestType::ZScore,
+            RequestType::ZMScore,
+            RequestType::ZRank,
+            RequestType::ZRevRank,
+            RequestType::ZPopMin,
+            RequestType::ZPopMax,
+            RequestType::ZDiff,
+            RequestType::ZDiffStore,
+            RequestType::ZInter,
+            RequestType::ZInterStore,
+            RequestType::ZInterCard,
+            RequestType::ZUnion,
+            RequestType::ZUnionStore,
+            RequestType::ZRangeStore,
+            RequestType::ZRangeByLex,
+            RequestType::ZRangeByScore,
+            RequestType::ZRevRange,
+            RequestType::ZRevRangeByLex,
+            RequestType::ZRevRangeByScore,
+            RequestType::ZRemRangeByRank,
+            RequestType::ZRemRangeByScore,
+            RequestType::ZRemRangeByLex,
+            RequestType::ZLexCount,
+            RequestType::ZRandMember,
+            RequestType::ZScan,
+            RequestType::ZMPop,
+            RequestType::BZMPop,
+            RequestType::BZPopMin,
+            RequestType::BZPopMax,
+            RequestType::XAdd,
+            RequestType::XAck,
+            RequestType::XRead,
+            RequestType::XReadGroup,
+            RequestType::XLen,
+            RequestType::XDel,
+            RequestType::XRange,
+            RequestType::XRevRange,
+            RequestType::XTrim,
+            RequestType::XPending,
+            RequestType::XAutoClaim,
+            RequestType::XClaim,
+            RequestType::BitCount,
+            RequestType::BitField,
+            RequestType::BitFieldReadOnly,
+            RequestType::BitOp,
+            RequestType::BitPos,
+            RequestType::SetBit,
+            RequestType::GetBit,
+            RequestType::GeoAdd,
+            RequestType::GeoHash,
+            RequestType::GeoDist,
+            RequestType::GeoPos,
+            RequestType::GeoSearch,
+            RequestType::GeoSearchStore,
+            RequestType::PfAdd,
+            RequestType::PfCount,
+            RequestType::PfMerge,
+            RequestType::Publish,
+            RequestType::SPublish,
+            RequestType::FlushAll,
+            RequestType::FlushDB,
+            RequestType::DBSize,
+            RequestType::Time,
+            RequestType::LastSave,
+            RequestType::Lolwut,
+        ];
+
+        for request_type in standard_types {
+            assert!(
+                request_type.get_command().is_some(),
+                "RequestType::{:?} returned None from get_command()",
+                request_type
+            );
+        }
+    }
+
+    #[test]
+    fn test_two_word_commands_return_some() {
+        let two_word_types = vec![
+            RequestType::ConfigGet,
+            RequestType::ConfigSet,
+            RequestType::ConfigResetStat,
+            RequestType::ConfigRewrite,
+            RequestType::ClientCaching,
+            RequestType::ClientGetName,
+            RequestType::ClientGetRedir,
+            RequestType::ClientId,
+            RequestType::ClientInfo,
+            RequestType::ClientKill,
+            RequestType::ClientList,
+            RequestType::ClientNoEvict,
+            RequestType::ClientNoTouch,
+            RequestType::ClientPause,
+            RequestType::ClientReply,
+            RequestType::ClientSetInfo,
+            RequestType::ClientSetName,
+            RequestType::ClientTracking,
+            RequestType::ClientTrackingInfo,
+            RequestType::ClientUnblock,
+            RequestType::ClientUnpause,
+            RequestType::ClusterInfo,
+            RequestType::ClusterNodes,
+            RequestType::ClusterShards,
+            RequestType::ClusterSlots,
+            RequestType::ClusterMyId,
+            RequestType::ClusterMyShardId,
+            RequestType::FunctionLoad,
+            RequestType::FunctionList,
+            RequestType::FunctionDelete,
+            RequestType::FunctionFlush,
+            RequestType::FunctionKill,
+            RequestType::FunctionStats,
+            RequestType::FunctionDump,
+            RequestType::FunctionRestore,
+            RequestType::ObjectEncoding,
+            RequestType::ObjectFreq,
+            RequestType::ObjectIdleTime,
+            RequestType::ObjectRefCount,
+            RequestType::XGroupCreate,
+            RequestType::XGroupDestroy,
+            RequestType::XGroupCreateConsumer,
+            RequestType::XGroupDelConsumer,
+            RequestType::XGroupSetId,
+            RequestType::XInfoGroups,
+            RequestType::XInfoConsumers,
+            RequestType::XInfoStream,
+            RequestType::AclCat,
+            RequestType::AclDelUser,
+            RequestType::AclList,
+            RequestType::AclLoad,
+            RequestType::AclLog,
+            RequestType::AclSave,
+            RequestType::AclSetUser,
+            RequestType::AclUsers,
+            RequestType::AclWhoami,
+            RequestType::AclDryRun,
+            RequestType::AclGenPass,
+            RequestType::SlowLogGet,
+            RequestType::SlowLogLen,
+            RequestType::SlowLogReset,
+            RequestType::MemoryDoctor,
+            RequestType::MemoryMallocStats,
+            RequestType::MemoryPurge,
+            RequestType::MemoryStats,
+            RequestType::MemoryUsage,
+            RequestType::LatencyDoctor,
+            RequestType::LatencyGraph,
+            RequestType::LatencyHistogram,
+            RequestType::LatencyHistory,
+            RequestType::LatencyLatest,
+            RequestType::LatencyReset,
+            RequestType::ModuleList,
+            RequestType::ModuleLoad,
+            RequestType::ModuleLoadEx,
+            RequestType::ModuleUnload,
+            RequestType::PubSubChannels,
+            RequestType::PubSubNumSub,
+            RequestType::PubSubNumPat,
+            RequestType::PubSubShardChannels,
+            RequestType::PubSubShardNumSub,
+            RequestType::ScriptDebug,
+            RequestType::ScriptExists,
+            RequestType::ScriptFlush,
+            RequestType::ScriptKill,
+            RequestType::ScriptShow,
+            RequestType::Command_,
+            RequestType::CommandCount,
+            RequestType::CommandDocs,
+            RequestType::CommandGetKeys,
+            RequestType::CommandGetKeysAndFlags,
+            RequestType::CommandInfo,
+            RequestType::CommandList,
+        ];
+
+        for request_type in two_word_types {
+            assert!(
+                request_type.get_command().is_some(),
+                "Two-word RequestType::{:?} returned None from get_command()",
+                request_type
+            );
+        }
+    }
+}
