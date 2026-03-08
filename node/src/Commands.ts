@@ -20,6 +20,7 @@ import {
     Score,
     SortedSetDataType,
 } from "./BaseClient";
+import { RequestError } from "./Errors";
 import { GlideClient } from "./GlideClient"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { GlideClusterClient, SingleNodeRoute } from "./GlideClusterClient"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import {
@@ -29,6 +30,21 @@ import {
 
 import { command_request } from "../build-ts/ProtobufMessage";
 import RequestType = command_request.RequestType;
+
+/**
+ * Validates that an expiry count is an integer. Throws a RequestError if not.
+ * @internal
+ */
+function validateExpiryCount(
+    expiry: { count: number; type: string },
+    commandName: string,
+): void {
+    if (!Number.isInteger(expiry.count)) {
+        throw new RequestError(
+            `${commandName}: expiry count must be an integer, but received ${JSON.stringify(expiry)}`,
+        );
+    }
+}
 
 function isLargeCommand(args: GlideString[]) {
     let lenSum = 0;
@@ -72,11 +88,21 @@ export function parseInfoResponse(response: string): Record<string, string> {
     const parsedResponse: Record<string, string> = {};
 
     for (const line of lines) {
-        // Ignore lines that start with '#'
-        if (!line.startsWith("#")) {
-            const [key, value] = line.trim().split(":");
-            parsedResponse[key] = value;
+        const trimmed = line.trim();
+
+        if (!trimmed || trimmed.startsWith("#")) {
+            continue;
         }
+
+        const colonIndex = trimmed.indexOf(":");
+
+        if (colonIndex === -1) {
+            continue;
+        }
+
+        const key = trimmed.substring(0, colonIndex);
+        const value = trimmed.substring(colonIndex + 1);
+        parsedResponse[key] = value;
     }
 
     return parsedResponse;
@@ -215,20 +241,10 @@ export function createSet(
         }
 
         if (options.expiry) {
-            if (
-                options.expiry !== "keepExisting" &&
-                !Number.isInteger(options.expiry.count)
-            ) {
-                throw new Error(
-                    `Received expiry '${JSON.stringify(
-                        options.expiry,
-                    )}'. Count must be an integer`,
-                );
-            }
-
             if (options.expiry === "keepExisting") {
                 args.push("KEEPTTL");
             } else {
+                validateExpiryCount(options.expiry, "SET");
                 args.push(options.expiry.type, options.expiry.count.toString());
             }
         }
@@ -534,15 +550,7 @@ export function createHSetEx(
         if (options.expiry === "KEEPTTL") {
             args.push("KEEPTTL");
         } else {
-            // Validate that count is an integer
-            if (!Number.isInteger(options.expiry.count)) {
-                throw new Error(
-                    `HSETEX received expiry '${JSON.stringify(
-                        options.expiry,
-                    )}'. Count must be an integer`,
-                );
-            }
-
+            validateExpiryCount(options.expiry, "HSETEX");
             args.push(options.expiry.type, options.expiry.count.toString());
         }
     }
@@ -576,14 +584,7 @@ export function createHGetEx(
         if (options.expiry === "PERSIST") {
             args.push("PERSIST");
         } else {
-            // Validate that count is an integer
-            if (!Number.isInteger(options.expiry.count)) {
-                throw new Error(
-                    `HGETEX received expiry '${JSON.stringify(
-                        options.expiry,
-                    )}'. Count must be an integer`,
-                );
-            }
+            validateExpiryCount(options.expiry, "HGETEX");
 
             args.push(options.expiry.type, options.expiry.count.toString());
         }
@@ -1744,8 +1745,8 @@ export function createZAdd(
                     ConditionalChange.ONLY_IF_DOES_NOT_EXIST &&
                 options.updateOptions
             ) {
-                throw new Error(
-                    `The GT, LT, and NX options are mutually exclusive. Cannot choose both ${options.updateOptions} and NX.`,
+                throw new RequestError(
+                    `ZADD: the GT, LT, and NX options are mutually exclusive, but received both ${options.updateOptions} and NX`,
                 );
             }
 
@@ -3434,8 +3435,8 @@ export function createRestore(
 
     if (options) {
         if (options.idletime !== undefined && options.frequency !== undefined) {
-            throw new Error(
-                `syntax error: both IDLETIME and FREQ cannot be set at the same time.`,
+            throw new RequestError(
+                "RESTORE: IDLETIME and FREQ are mutually exclusive and cannot both be set",
             );
         }
 
@@ -4606,17 +4607,15 @@ export function createGetEx(
     const args = [key];
 
     if (options) {
-        if (options !== "persist" && !Number.isInteger(options.duration)) {
-            throw new Error(
-                `Received expiry '${JSON.stringify(
-                    options.duration,
-                )}'. Count must be an integer`,
-            );
-        }
-
         if (options === "persist") {
             args.push("PERSIST");
         } else {
+            if (!Number.isInteger(options.duration)) {
+                throw new RequestError(
+                    `GETEX: expiry duration must be an integer, but received ${JSON.stringify(options.duration)}`,
+                );
+            }
+
             args.push(options.type, options.duration.toString());
         }
     }

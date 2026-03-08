@@ -1102,6 +1102,15 @@ export class BaseClient {
         this.remainingReadData = undefined;
     }
 
+    private static readonly SIMPLE_ROUTE_MAP: Record<
+        string,
+        command_request.SimpleRoutes
+    > = {
+        allPrimaries: command_request.SimpleRoutes.AllPrimaries,
+        allNodes: command_request.SimpleRoutes.AllNodes,
+        randomNode: command_request.SimpleRoutes.Random,
+    };
+
     protected toProtobufRoute(
         route: Routes | undefined,
     ): command_request.Routes | undefined {
@@ -1109,67 +1118,64 @@ export class BaseClient {
             return undefined;
         }
 
-        if (route === "allPrimaries") {
-            return command_request.Routes.create({
-                simpleRoutes: command_request.SimpleRoutes.AllPrimaries,
-            });
-        } else if (route === "allNodes") {
-            return command_request.Routes.create({
-                simpleRoutes: command_request.SimpleRoutes.AllNodes,
-            });
-        } else if (route === "randomNode") {
-            return command_request.Routes.create({
-                simpleRoutes: command_request.SimpleRoutes.Random,
-            });
-        } else if (route.type === "primarySlotKey") {
-            return command_request.Routes.create({
-                slotKeyRoute: command_request.SlotKeyRoute.create({
-                    slotType: command_request.SlotTypes.Primary,
-                    slotKey: route.key,
-                }),
-            });
-        } else if (route.type === "replicaSlotKey") {
-            return command_request.Routes.create({
-                slotKeyRoute: command_request.SlotKeyRoute.create({
-                    slotType: command_request.SlotTypes.Replica,
-                    slotKey: route.key,
-                }),
-            });
-        } else if (route.type === "primarySlotId") {
-            return command_request.Routes.create({
-                slotKeyRoute: command_request.SlotIdRoute.create({
-                    slotType: command_request.SlotTypes.Primary,
-                    slotId: route.id,
-                }),
-            });
-        } else if (route.type === "replicaSlotId") {
-            return command_request.Routes.create({
-                slotKeyRoute: command_request.SlotIdRoute.create({
-                    slotType: command_request.SlotTypes.Replica,
-                    slotId: route.id,
-                }),
-            });
-        } else if (route.type === "routeByAddress") {
-            let port = route.port;
-            let host = route.host;
+        if (typeof route === "string") {
+            const simpleRoute = BaseClient.SIMPLE_ROUTE_MAP[route];
 
-            if (port === undefined) {
-                const split = host.split(":");
-
-                if (split.length !== 2) {
-                    throw new RequestError(
-                        "No port provided, expected host to be formatted as `{hostname}:{port}`. Received " +
-                            host,
-                    );
-                }
-
-                host = split[0];
-                port = Number(split[1]);
+            if (simpleRoute !== undefined) {
+                return command_request.Routes.create({
+                    simpleRoutes: simpleRoute,
+                });
             }
 
-            return command_request.Routes.create({
-                byAddressRoute: { host, port },
-            });
+            return undefined;
+        }
+
+        switch (route.type) {
+            case "primarySlotKey":
+            case "replicaSlotKey":
+                return command_request.Routes.create({
+                    slotKeyRoute: command_request.SlotKeyRoute.create({
+                        slotType:
+                            route.type === "primarySlotKey"
+                                ? command_request.SlotTypes.Primary
+                                : command_request.SlotTypes.Replica,
+                        slotKey: route.key,
+                    }),
+                });
+            case "primarySlotId":
+            case "replicaSlotId":
+                return command_request.Routes.create({
+                    slotKeyRoute: command_request.SlotIdRoute.create({
+                        slotType:
+                            route.type === "primarySlotId"
+                                ? command_request.SlotTypes.Primary
+                                : command_request.SlotTypes.Replica,
+                        slotId: route.id,
+                    }),
+                });
+
+            case "routeByAddress": {
+                let port = route.port;
+                let host = route.host;
+
+                if (port === undefined) {
+                    const split = host.split(":");
+
+                    if (split.length !== 2) {
+                        throw new RequestError(
+                            "No port provided, expected host to be formatted as `{hostname}:{port}`. Received " +
+                                host,
+                        );
+                    }
+
+                    host = split[0];
+                    port = Number(split[1]);
+                }
+
+                return command_request.Routes.create({
+                    byAddressRoute: { host, port },
+                });
+            }
         }
     }
 
