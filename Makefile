@@ -1,4 +1,4 @@
-.PHONY: all java java-test python python-test node node-test check-valkey-server go go-test prettier-check prettier-fix
+.PHONY: all java java-test python python-test node node-test check-valkey-server go go-test prettier-check prettier-fix rust rust-test rust-lint rust-fmt check status
 
 BLUE=\033[34m
 YELLOW=\033[33m
@@ -100,6 +100,42 @@ go-lint: .build/go_deps
 	@mkdir -p .build/ && touch .build/go_deps
 
 ##
+## Rust targets
+##
+rust:
+	@echo "$(GREEN)Building Rust core (release)$(RESET)"
+	@cargo build --release
+
+rust-test:
+	@echo "$(GREEN)Running Rust core tests$(RESET)"
+	@cd glide-core && cargo test
+
+rust-lint:
+	@echo "$(GREEN)Running Rust linters (clippy + fmt check)$(RESET)"
+	@cargo clippy --all-targets -- -D warnings
+	@cargo fmt --all -- --check
+
+rust-fmt:
+	@echo "$(GREEN)Formatting Rust code$(RESET)"
+	@cargo fmt --all
+
+##
+## Cross-language targets
+##
+check:
+	@echo "$(GREEN)Running pre-push checks via dev.sh$(RESET)"
+	@./dev.sh check
+
+status:
+	@./dev.sh status
+
+fmt-all: rust-fmt java-lint python-lint
+	@echo "$(GREEN)All formatters completed$(RESET)"
+
+lint-all: rust-lint java-lint python-lint node-lint go-lint
+	@echo "$(GREEN)All linters completed$(RESET)"
+
+##
 ## Common targets
 ##
 check-valkey-server:
@@ -109,5 +145,14 @@ clean:
 	rm -fr .build/
 
 help:
-	@echo "$(GREEN)Listing Makefile targets:$(RESET)"
-	@echo $(shell grep '^[^#[:space:]].*:' Makefile|cut -d":" -f1|grep -v PHONY|grep -v "^.build"|sort)
+	@echo "$(GREEN)Valkey GLIDE Makefile Targets$(RESET)"
+	@echo ""
+	@echo "  $(YELLOW)Rust:$(RESET)     rust  rust-test  rust-lint  rust-fmt"
+	@echo "  $(YELLOW)Java:$(RESET)     java  java-test  java-lint"
+	@echo "  $(YELLOW)Python:$(RESET)   python  python-test  python-lint"
+	@echo "  $(YELLOW)Node.js:$(RESET)  node  node-test  node-lint"
+	@echo "  $(YELLOW)Go:$(RESET)       go  go-test  go-lint"
+	@echo "  $(YELLOW)Cross:$(RESET)    all  check  status  fmt-all  lint-all"
+	@echo "  $(YELLOW)Util:$(RESET)     clean  help  prettier-check  prettier-fix"
+	@echo ""
+	@echo "  Tip: use $(BLUE)./dev.sh$(RESET) for the full developer toolkit"

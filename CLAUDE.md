@@ -76,6 +76,119 @@ docs/           # Documentation
 Socket IPC wrappers → `socket_listener` → `glide-core` → Valkey/Redis
 FFI wrappers → `glide-core` → Valkey/Redis
 
+## Developer Toolkit (`./dev.sh`)
+
+Unified CLI for cross-language development. Use this instead of remembering per-language commands.
+
+```bash
+./dev.sh setup          # Verify all toolchain prerequisites are installed
+./dev.sh status         # Show branch, toolchain versions, changed languages
+./dev.sh changed        # Show which languages have changes vs main
+./dev.sh check          # Pre-push: auto-detect changed languages, lint + build
+./dev.sh check rust     # Pre-push: validate only Rust
+./dev.sh fmt java       # Format only Java code
+./dev.sh lint python    # Lint only Python code
+./dev.sh build node     # Build only Node.js client
+./dev.sh test go        # Run Go unit tests
+```
+
+## Command Quick Reference
+
+<command-reference>
+  <lang name="rust">
+    <build>cargo build --release</build>
+    <test>cd glide-core &amp;&amp; cargo test</test>
+    <lint>cargo clippy --all-targets -- -D warnings</lint>
+    <format>cargo fmt --all</format>
+    <bench>cd glide-core &amp;&amp; cargo bench</bench>
+  </lang>
+  <lang name="java">
+    <build>cd java &amp;&amp; ./gradlew :client:buildAllRelease</build>
+    <test>cd java &amp;&amp; ./gradlew :integTest:test</test>
+    <lint>cd java &amp;&amp; ./gradlew :spotlessCheck</lint>
+    <format>cd java &amp;&amp; ./gradlew :spotlessApply</format>
+  </lang>
+  <lang name="python">
+    <build>cd python &amp;&amp; python3 dev.py build --mode release</build>
+    <test>cd python &amp;&amp; python3 dev.py test</test>
+    <lint>cd python &amp;&amp; python3 dev.py lint</lint>
+  </lang>
+  <lang name="node">
+    <build>cd node &amp;&amp; npm run build:release</build>
+    <test>cd node &amp;&amp; npm test</test>
+    <lint>cd node &amp;&amp; npx eslint .</lint>
+    <format>cd node &amp;&amp; npx prettier --write src/ tests/</format>
+  </lang>
+  <lang name="go">
+    <build>cd go &amp;&amp; make build</build>
+    <test>cd go &amp;&amp; make unit-test</test>
+    <integ-test>cd go &amp;&amp; make integ-test</integ-test>
+    <lint>cd go &amp;&amp; make lint</lint>
+    <format>cd go &amp;&amp; make format</format>
+  </lang>
+</command-reference>
+
+## Workflow Recipes
+
+<workflows>
+  <workflow name="adding-a-new-command">
+    <description>Adding a new Valkey command to a language binding</description>
+    <steps>
+      1. Check if command exists in glide-core (grep for command name in glide-core/src/)
+      2. If not in core: add to protobuf enum in glide-core/src/protobuf/command_request.proto
+      3. Add command handling in glide-core/src/client/mod.rs
+      4. Add language-specific wrapper (see context-sources for file paths)
+      5. Add tests (unit + integration) in the language's test directory
+      6. Run ./dev.sh check [language] before committing
+    </steps>
+  </workflow>
+  <workflow name="core-change-impact">
+    <description>When modifying glide-core, assess cross-language impact</description>
+    <steps>
+      1. Identify if change affects socket_listener.rs (impacts Python async, Node.js)
+      2. Identify if change affects ffi/ (impacts Python sync, Go)
+      3. Identify if change affects JNI interface (impacts Java)
+      4. Run ./dev.sh check to validate all affected bindings
+      5. Update protobuf definitions if command/response shapes changed
+    </steps>
+  </workflow>
+  <workflow name="debugging-integration-tests">
+    <description>When integration tests fail</description>
+    <steps>
+      1. Ensure valkey-server or redis-server is running (./dev.sh setup checks this)
+      2. For cluster tests: python3 utils/cluster_manager.py start --cluster-mode
+      3. For standalone tests: python3 utils/cluster_manager.py start
+      4. Check server logs for connection issues
+      5. Set RUST_LOG=debug for verbose core logging
+    </steps>
+  </workflow>
+</workflows>
+
+## Troubleshooting
+
+<troubleshooting>
+  <issue trigger="cargo build fails with protobuf error">
+    Run: protoc --version (need v3+). Install: apt install protobuf-compiler or brew install protobuf
+  </issue>
+  <issue trigger="Python build fails with maturin/PyO3 error">
+    Ensure virtual env is active. Run: cd python && python3 dev.py build --mode debug for verbose output
+  </issue>
+  <issue trigger="Node.js build fails with NAPI error">
+    Run: cd node && npm i && cd rust-client && npm i (reinstall native deps)
+  </issue>
+  <issue trigger="Go build fails with CGO/FFI error">
+    Ensure libglide_ffi.a exists. Run: cd go && make build-glide-client (builds FFI first)
+  </issue>
+  <issue trigger="Java build fails with JNI linking">
+    Check JAVA_HOME is set. Run: cd java && ./gradlew :client:buildAllRelease (builds Rust JNI lib)
+  </issue>
+  <issue trigger="Integration tests can't connect to server">
+    Start server: python3 utils/cluster_manager.py start
+    For cluster mode: python3 utils/cluster_manager.py start --cluster-mode
+    Stop all: python3 utils/cluster_manager.py stop --prefix cluster
+  </issue>
+</troubleshooting>
+
 ## Context Retrieval
 
 <context-sources>

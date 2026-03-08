@@ -35,30 +35,54 @@ This is the Valkey GLIDE mono-repository containing a Rust core (`glide-core`) a
 
 ## Build and Test Rules (Agents)
 
-### Preferred (Make Targets)
+### Developer Toolkit (Recommended)
+```bash
+# Unified developer CLI - use this for most operations
+./dev.sh setup          # Verify all toolchain prerequisites
+./dev.sh status         # Show branch, toolchain versions, changed languages
+./dev.sh check          # Pre-push: auto-detect changed languages, lint + build
+./dev.sh check rust     # Pre-push: validate only Rust
+./dev.sh fmt java       # Format only Java code
+./dev.sh lint python    # Lint only Python code
+./dev.sh build node     # Build only Node.js client
+./dev.sh test go        # Run Go unit tests
+./dev.sh changed        # Show which languages have changes vs main
+```
+
+### Make Targets
 ```bash
 # Build all language bindings
 make all
 
 # Individual language builds
+make rust          # Build Rust core (release mode)
 make java          # Build Java client (release mode)
 make python        # Build Python async + sync clients (release mode)
 make node          # Build Node.js client (release mode)
 make go            # Build Go client
 
 # Testing
+make rust-test     # Run Rust core unit tests
 make java-test     # Run Java integration tests
 make python-test   # Run Python tests
 make node-test     # Run Node.js tests
 make go-test       # Run Go tests
 
 # Linting
+make rust-lint     # Run Rust clippy + format check
 make java-lint     # Run Java spotlessApply
 make python-lint   # Run Python linters via dev.py
 make node-lint     # Run Node.js linters
 make go-lint       # Run Go linters
 
+# Cross-language
+make check         # Pre-push validation (via dev.sh)
+make status        # Show repo status
+make lint-all      # Lint all languages
+make fmt-all       # Format all languages
+
 # Utilities
+make rust-fmt      # Format Rust code
 make clean         # Remove .build/ directory
 make help          # List available targets
 ```
