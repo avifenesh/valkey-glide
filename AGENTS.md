@@ -21,6 +21,15 @@ This is the Valkey GLIDE mono-repository containing a Rust core (`glide-core`) a
 - `examples/` - Usage examples for each language binding
 - `docs/` - Documentation and MkDocs configuration
 
+**Critical Files (start here for common tasks):**
+- `glide-core/src/request_type.rs` - All 600+ command type mappings (enum + Redis command strings)
+- `glide-core/src/client/mod.rs` - Main Client struct, command routing, lazy init
+- `glide-core/src/client/value_conversion.rs` - Response type coercion logic
+- `glide-core/src/errors.rs` - Error types that propagate to all languages
+- `glide-core/src/protobuf/command_request.proto` - Protobuf command definitions
+- `glide-core/src/socket_listener.rs` - Unix socket IPC for Python async / Node.js
+- `ffi/src/lib.rs` - C FFI for Go / Python sync (CommandResponse struct)
+
 ## Architecture Quick Facts
 
 **Core Implementation:** Rust (`glide-core`) with FFI exposure to language adapters
@@ -202,6 +211,61 @@ valkey-glide/
 └── Makefile            # Top-level build orchestration
 ```
 
+## Adding a New Command (Cross-Language Workflow)
+
+The most common task. Changes flow top-down through these layers:
+
+```
+1. glide-core/src/protobuf/command_request.proto  → Add RequestType enum value (unique ID by category)
+2. glide-core/src/request_type.rs                 → Add #[repr(C)] enum + get_command() match arm
+3. glide-core/src/client/mod.rs                   → Only if special routing/response handling needed
+4. glide-core/src/client/value_conversion.rs       → Only if non-standard response type conversion
+5. Language wrapper (client method + command builder + tests)
+6. Regenerate protobuf for each affected language
+```
+
+**RequestType ID ranges:** bitmap=100s, cluster=200s, connection=300s, generic=400s, hash=500s, hyper=600s, list=700s, pubsub=800s, scripting=900s, server=1000s, set=1100s, sorted-set=1200s, stream=1300s, string=1400s, transaction=1500s
+
+**Protobuf regeneration after .proto changes:**
+- Java: automatic on `./gradlew build`
+- Python: `cd python && python3 dev.py protobuf`
+- Node: `cd node && npm run build-protobuf`
+- Go: `cd go && make generate-protobuf`
+
+## Cross-Language Change Propagation
+
+When modifying `glide-core/` or `ffi/`, changes affect all bindings:
+
+| Change Type | Affects | Action Required |
+|-------------|---------|-----------------|
+| `.proto` schema | All languages | Regenerate protobuf, update all wrappers |
+| `request_type.rs` | All languages | Ensure enum IDs match proto, update FFI |
+| `errors.rs` | All languages | Update error handling in each wrapper |
+| `socket_listener.rs` | Python async, Node.js | Test socket IPC path |
+| `ffi/src/lib.rs` | Go, Python sync, Java | Test FFI/JNI/CGO path |
+| `value_conversion.rs` | All languages | Verify response types in each wrapper |
+
+**Build order (must be respected):**
+1. Rust core (`glide-core/`, `ffi/`)
+2. Protobuf regeneration
+3. Language-specific build
+4. Tests
+
+## Error Flow Architecture
+
+```
+Valkey/Redis server error
+  → redis-rs (forked at glide-core/redis-rs/)
+    → glide-core/src/errors.rs → RequestErrorType {Unspecified, ExecAbort, Timeout, Disconnect}
+      → Socket IPC path (response.proto): error string in protobuf response
+        → Python async: GlideError subclasses
+        → Node.js: Error objects with type + message
+      → FFI path: CommandResponse with error pointer
+        → Java: JNI exception (java/src/errors.rs bridge)
+        → Go: standard error interface
+        → Python sync: CFFI error string
+```
+
 ## Quality Gates (Agent Checklist)
 
 - [ ] Build passes: `make all` succeeds
@@ -209,8 +273,10 @@ valkey-glide/
 - [ ] Tests pass: `make *-test` targets succeed
 - [ ] No generated outputs committed (check `.gitignore`)
 - [ ] DCO signoff present: `git log --format="%B" -n 1 | grep "Signed-off-by"`
+- [ ] Commit cryptographically signed (shows "Verified" on GitHub)
 - [ ] Conventional commit format used
 - [ ] Cross-language API consistency maintained
+- [ ] Protobuf regenerated for all affected languages after .proto changes
 - [ ] Security scan passes (no secrets committed)
 
 ## Quick Facts for Reasoners
