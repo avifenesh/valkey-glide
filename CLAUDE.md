@@ -76,6 +76,73 @@ docs/           # Documentation
 Socket IPC wrappers → `socket_listener` → `glide-core` → Valkey/Redis
 FFI wrappers → `glide-core` → Valkey/Redis
 
+## Quick Dev Commands
+
+```bash
+make help          # List all targets with descriptions
+make info          # Show installed toolchain versions
+make rust          # Build Rust core + FFI (release)
+make rust-test     # Run Rust unit tests (no server needed)
+make rust-lint     # Run clippy on all Rust crates
+make rust-fmt      # Format all Rust code
+make lint          # Run linters for ALL languages
+make fmt           # Auto-format Rust + JS/TS
+```
+
+## How to Add a New Valkey Command
+
+<command-checklist>
+  <step n="1" where="glide-core/src/protobuf/command_request.proto">
+    Add variant to `RequestType` enum. Use next available number in the correct category block.
+  </step>
+  <step n="2" where="glide-core/src/client/mod.rs">
+    Map the new `RequestType` to the actual Redis command string in the `get_command` match arm.
+  </step>
+  <step n="3" where="language wrapper (pick one)">
+    Add the public API method to the language client:
+    - Node: `node/src/Commands.ts` (createXxx function) + `node/src/BaseClient.ts` (method)
+    - Python async: `python/glide-shared/glide_shared/commands/` (trait) + `python/glide-async/python/glide/glide_client.py`
+    - Python sync: `python/glide-sync/glide_sync/sync_commands/` + `python/glide-sync/glide_sync/glide_client.py`
+    - Java: `java/client/src/main/java/glide/api/commands/` (interface) + `java/client/src/main/java/glide/api/BaseClient.java`
+    - Go: `go/internal/interfaces/` (interface) + `go/base_client.go`
+  </step>
+  <step n="4" where="tests">
+    Add integration tests using a live Valkey/Redis server. Minimum: standalone + cluster mode.
+  </step>
+  <step n="5" where="docs">
+    Update command docs/examples if the command is user-facing.
+  </step>
+</command-checklist>
+
+## Troubleshooting
+
+<troubleshooting>
+  <issue name="protobuf-out-of-sync">
+    <symptom>Unknown RequestType variant, missing field, or stale protobuf</symptom>
+    <fix>Rebuild protobuf: `cd glide-core && cargo build` (Rust auto-generates). For Go: `cd go && make generate-protobuf`. For Node: `cd node && npm run build`.</fix>
+  </issue>
+  <issue name="rust-build-fails">
+    <symptom>Cargo build errors in glide-core or ffi</symptom>
+    <fix>Check `rustc --version` (need 1.75+). Run `cargo clean` in the failing crate, then rebuild. Check if `redis-rs` submodule is initialized: `git submodule update --init`.</fix>
+  </issue>
+  <issue name="node-native-module">
+    <symptom>Node.js "Cannot find module ../build-ts/native" or NAPI errors</symptom>
+    <fix>`cd node && npm run build` to compile Rust native module. If stale: `rm -rf node/build-ts node/rust-client/target && npm run build`.</fix>
+  </issue>
+  <issue name="java-jni-load">
+    <symptom>UnsatisfiedLinkError or JNI library not found</symptom>
+    <fix>`cd java && ./gradlew :client:buildAllRelease` to rebuild the native library. Check `java -version` matches the expected JDK (21+).</fix>
+  </issue>
+  <issue name="test-needs-server">
+    <symptom>Integration tests fail with connection refused</symptom>
+    <fix>Start a Valkey/Redis server: `valkey-server --port 6379` or use `python3 utils/cluster_manager.py start` for standalone, add `--cluster-mode` for cluster.</fix>
+  </issue>
+  <issue name="go-ffi-missing">
+    <symptom>Go build fails with missing `libglide_ffi.a` or `lib.h`</symptom>
+    <fix>`cd go && make build-glide-client` builds the FFI static lib and generates C headers. Requires `cbindgen` (`cargo install cbindgen`).</fix>
+  </issue>
+</troubleshooting>
+
 ## Context Retrieval
 
 <context-sources>

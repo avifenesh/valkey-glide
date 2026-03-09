@@ -41,26 +41,36 @@ This is the Valkey GLIDE mono-repository containing a Rust core (`glide-core`) a
 make all
 
 # Individual language builds
-make java          # Build Java client (release mode)
-make python        # Build Python async + sync clients (release mode)
-make node          # Build Node.js client (release mode)
-make go            # Build Go client
+make rust            # Build Rust core + FFI (release)
+make java            # Build Java client (release mode)
+make python          # Build Python async + sync clients (release mode)
+make node            # Build Node.js client (release mode)
+make go              # Build Go client
 
 # Testing
-make java-test     # Run Java integration tests
-make python-test   # Run Python tests
-make node-test     # Run Node.js tests
-make go-test       # Run Go tests
+make rust-test       # Run Rust unit tests (no server needed)
+make java-test       # Run Java integration tests
+make python-test     # Run Python tests
+make node-test       # Run Node.js tests
+make go-test         # Run Go tests
 
-# Linting
-make java-lint     # Run Java spotlessApply
-make python-lint   # Run Python linters via dev.py
-make node-lint     # Run Node.js linters
-make go-lint       # Run Go linters
+# Linting (individual)
+make rust-lint       # Run clippy on Rust code
+make java-lint       # Run Java spotlessApply
+make python-lint     # Run Python linters via dev.py
+make node-lint       # Run Node.js linters
+make go-lint         # Run Go linters
+
+# Linting & formatting (cross-language)
+make lint            # Run linters for ALL languages
+make fmt             # Auto-format Rust + JS/TS
+make rust-fmt        # Format Rust code only
+make rust-fmt-check  # Check Rust formatting (no changes)
 
 # Utilities
-make clean         # Remove .build/ directory
-make help          # List available targets
+make info            # Show installed toolchain versions
+make clean           # Remove .build/ directory
+make help            # List all targets with descriptions
 ```
 
 ### Raw Equivalents Per Stack
@@ -204,14 +214,16 @@ valkey-glide/
 
 ## Quality Gates (Agent Checklist)
 
-- [ ] Build passes: `make all` succeeds
-- [ ] Lint passes: `make *-lint` targets succeed
-- [ ] Tests pass: `make *-test` targets succeed
+- [ ] Build passes: `make all` succeeds (or `make <lang>` for single-language changes)
+- [ ] Lint passes: `make lint` (all languages) or `make <lang>-lint`
+- [ ] Tests pass: `make <lang>-test` for affected languages
+- [ ] Rust core: `make rust-lint && make rust-fmt-check && make rust-test`
 - [ ] No generated outputs committed (check `.gitignore`)
 - [ ] DCO signoff present: `git log --format="%B" -n 1 | grep "Signed-off-by"`
 - [ ] Conventional commit format used
 - [ ] Cross-language API consistency maintained
 - [ ] Security scan passes (no secrets committed)
+- [ ] Verify toolchain: `make info` to confirm versions match CI expectations
 
 ## Quick Facts for Reasoners
 
