@@ -131,7 +131,7 @@ make fmt           # Auto-format Rust + JS/TS
   </issue>
   <issue name="java-jni-load">
     <symptom>UnsatisfiedLinkError or JNI library not found</symptom>
-    <fix>`cd java && ./gradlew :client:buildAllRelease` to rebuild the native library. Check `java -version` matches the expected JDK (21+).</fix>
+    <fix>`cd java && ./gradlew :client:buildAllRelease` to rebuild the native library. Check `java -version` matches the expected JDK (11+).</fix>
   </issue>
   <issue name="test-needs-server">
     <symptom>Integration tests fail with connection refused</symptom>
