@@ -333,4 +333,4 @@ Three proto files define the client-core communication:
 | `connection_request.proto` | Client configuration | `ConnectionRequest`, `ReadFrom`, `TlsMode`, `CompressionConfig`, `IamCredentials` |
 | `response.proto` | Response handling | `Response`, `RequestError`, `RequestErrorType`, `ConstantResponse` |
 
-**RequestType ID ranges:** Bitmap=1xx, Cluster=2xx, Connection=3xx, String=4xx, Generic=5xx, Set=6xx, Hash=7xx, List=8xx, SortedSet=9xx, Stream=10xx, HyperLogLog=11xx, Geo=12xx, Scripting=13xx, Server=14xx, PubSub=15xx.
+**RequestType ID ranges:** Bitmap=1xx, Cluster=2xx, Connection=3xx, Generic=4xx, Geospatial=5xx, Hash=6xx, HyperLogLog=7xx, List=8xx, PubSub=9xx, Scripting=10xx, Server=11xx, Set=12xx, SortedSet=13xx, Stream=14xx, String=15xx, Transaction=16xx, JSON=20xx, VectorSearch=21xx.
