@@ -1,0 +1,50 @@
+# Configuration for actions/labeler@v5
+# Labels PRs based on files changed
+# Docs: https://github.com/actions/labeler
+
+"python 🐍":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "python/**"
+
+"java ☕":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "java/**"
+
+"node 🐢":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "node/**"
+
+"go 🏃":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "go/**"
+
+"Rust ⚙️":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "glide-core/**"
+          - "logger_core/**"
+          - "ffi/**"
+          - "Cargo.toml"
+          - "Cargo.lock"
+          - "deny.toml"
+
+"CI/CD ⚒️":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+          - "!CHANGELOG.md"
+
+benchmarks:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "benchmarks/**"
