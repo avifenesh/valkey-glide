@@ -309,6 +309,8 @@ pub struct Client {
     otel_metadata: types::OTelMetadata,
     // Optional client-side cache
     client_side_cache: Option<Arc<dyn GlideCache>>,
+    // Timeout watchdog — fires timeouts from a dedicated OS thread
+    timeout_watchdog: crate::timeout_watchdog::TimeoutWatchdog,
 }
 
 async fn run_with_timeout<T>(
@@ -1048,10 +1050,11 @@ impl Client {
 
             match request_timeout {
                 Some(duration) => {
+                    let timeout_rx = self.timeout_watchdog.register(duration);
                     tokio::pin!(execute);
                     tokio::select! {
                         result = &mut execute => result,
-                        _ = tokio::time::sleep(duration) => {
+                        _ = timeout_rx => {
                             // User timeout — execute future is dropped. The Cmd
                             // was already moved into the event loop's PendingRequest,
                             // so its tracker clone keeps the inflight slot held until
@@ -2157,6 +2160,7 @@ impl Client {
                 pubsub_synchronizer: pubsub_synchronizer.clone(),
                 otel_metadata,
                 client_side_cache,
+                timeout_watchdog: crate::timeout_watchdog::TimeoutWatchdog::start(),
             };
 
             let client_arc = Arc::new(RwLock::new(client));
@@ -2607,6 +2611,7 @@ mod tests {
                 db_namespace: "0".to_string(),
             },
             client_side_cache: None,
+            timeout_watchdog: crate::timeout_watchdog::TimeoutWatchdog::start(),
         }
     }
 
