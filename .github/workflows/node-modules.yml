@@ -71,7 +71,7 @@ jobs:
               with:
                   engine-version: "9.0"
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       node/rust-client/target
@@ -121,7 +121,7 @@ jobs:
               with:
                   node-version: latest
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       node/rust-client/target

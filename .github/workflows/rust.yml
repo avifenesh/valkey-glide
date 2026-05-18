@@ -118,7 +118,7 @@ jobs:
                   engine-version: ${{ matrix.engine.version }}
                   github-token: ${{ secrets.GITHUB_TOKEN }}
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       glide-core/target
@@ -147,7 +147,7 @@ jobs:
               working-directory: ./ffi/miri-tests
               run: cargo miri test
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       glide-core/target
@@ -164,7 +164,7 @@ jobs:
                   cargo check --benches --all-features
                   cargo check --no-default-features
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       glide-core/target

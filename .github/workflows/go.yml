@@ -127,7 +127,7 @@ jobs:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   engine-version: ${{ matrix.engine.version }}
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       ffi/target
@@ -207,7 +207,7 @@ jobs:
               with:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       ffi/target
@@ -304,7 +304,7 @@ jobs:
               with:
                   target: ${{ matrix.host.TARGET }}
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       ffi/target
@@ -386,7 +386,7 @@ jobs:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   engine-version: ${{ matrix.engine.version }}
 
-            - uses: actions/cache@v4
+            - uses: actions/cache@v5
               with:
                   path: |
                       ffi/target
