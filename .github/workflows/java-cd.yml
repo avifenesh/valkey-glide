@@ -207,7 +207,7 @@ jobs:
 
             - name: Upload artifacts to publish
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: java-${{ matrix.host.TARGET }}
                   path: |
@@ -216,7 +216,7 @@ jobs:
 
             - name: Upload native library for uber JAR assembly
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: native-lib-${{ matrix.host.TARGET }}
                   path: java/client/build/resources/main/natives/**/*
@@ -356,13 +356,13 @@ jobs:
                   cp $src_folder/jedis-bundle.jar jedis-bundle-no-classifier.jar
 
             - name: Upload uber JAR artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: java-uber-jar
                   path: java/bundle-uber-jar.jar
 
             - name: Upload jedis no-classifier artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: jedis-no-classifier
                   path: java/jedis-bundle-no-classifier.jar
@@ -412,7 +412,7 @@ jobs:
                   zip -r ../build io
 
             - name: Upload bundle to CI artifacts
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: valkey-${{ env.RELEASE_VERSION }}
                   path: |

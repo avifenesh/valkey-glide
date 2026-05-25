@@ -79,7 +79,7 @@ jobs:
             - name: Upload test reports
               if: always()
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: test-reports-redis-rs-${{ github.sha }}
                   path: ./glide-core/redis-rs/redis/test-results.xml
@@ -92,7 +92,7 @@ jobs:
             - name: Upload benchmark results
               if: always()
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: benchmark-results-redis-rs-${{ github.sha }}
                   path: ./glide-core/redis-rs/redis/bench-results.xml
@@ -118,7 +118,7 @@ jobs:
             - name: Upload audit results
               if: always()
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: audit-results-redis-rs--${{ github.sha }}
                   path: ./glide-core/redis-rs/redis/audit-results.txt
@@ -141,7 +141,7 @@ jobs:
             - name: Upload machete results
               if: always()
               continue-on-error: true
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: machete-results-redis-rs-${{ github.sha }}
                   path: ./glide-core/redis-rs/redis/machete-results.txt
