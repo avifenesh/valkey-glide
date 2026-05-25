@@ -110,7 +110,7 @@ jobs:
 
               ### NodeJS ###
             - name: Set up Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v6
 
             - name: Run ORT tools for Node
               uses: ./.github/workflows/run-ort-tools

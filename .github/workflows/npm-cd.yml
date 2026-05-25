@@ -187,7 +187,7 @@ jobs:
                   fetch-depth: 0
 
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v6
               with:
                   node-version: latest
 
@@ -325,7 +325,7 @@ jobs:
 
             # Setup Node.js for publishing to NPM and caching
             - name: Setup Node.js with npm cache
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v6
               with:
                   node-version: latest
                   registry-url: "https://registry.npmjs.org"
@@ -497,7 +497,7 @@ jobs:
 
             - name: Setup Node.js
               if: ${{ !(matrix.build_type == 'musl') }}
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v6
               with:
                   node-version: latest
 
@@ -563,7 +563,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v6
               with:
                   node-version: latest
                   registry-url: "https://registry.npmjs.org"
